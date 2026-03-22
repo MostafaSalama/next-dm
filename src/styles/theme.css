@@ -1,0 +1,90 @@
+/* ============================================================
+   Next DM — Theme System
+   CSS custom properties for dark, light, and custom themes.
+   All components reference these variables — no hardcoded hex.
+   ============================================================ */
+
+:root,
+[data-theme="dark"] {
+  /* Surface hierarchy */
+  --surface:                    #041329;
+  --surface-container-lowest:   #010E24;
+  --surface-container-low:      #0D1C32;
+  --surface-container:          #141F35;
+  --surface-container-high:     #1C2A41;
+  --surface-container-highest:  #27354C;
+  --surface-bright:             #2C3951;
+  --surface-variant:            #3C4A45;
+  --surface-tint:               #38DEBB;
+
+  /* Text on surfaces */
+  --on-surface:                 #E1E2E8;
+  --on-surface-variant:         #BACAC3;
+
+  /* Primary accent */
+  --primary:                    #FFFFFF;
+  --primary-fixed:              #5FFBD6;
+  --primary-fixed-dim:          #38DEBB;
+  --on-primary:                 #00382D;
+  --on-primary-container:       #00725E;
+
+  /* Secondary */
+  --secondary:                  #BCC6E6;
+  --on-secondary-container:     #AAB4D4;
+
+  /* Error */
+  --error:                      #FFB4AB;
+  --on-error:                   #690005;
+
+  /* Outline */
+  --outline-variant:            #3C4A45;
+
+  /* Semantic shortcuts */
+  --color-downloading:          var(--primary-fixed-dim);
+  --color-completed:            var(--primary-fixed);
+  --color-queued:               var(--secondary);
+  --color-paused:               var(--on-surface-variant);
+  --color-error:                var(--error);
+  --color-pending:              var(--outline-variant);
+}
+
+[data-theme="light"] {
+  --surface:                    #F8FAFB;
+  --surface-container-lowest:   #FFFFFF;
+  --surface-container-low:      #F0F3F5;
+  --surface-container:          #E8ECEF;
+  --surface-container-high:     #DDE2E6;
+  --surface-container-highest:  #D0D6DB;
+  --surface-bright:             #C5CCD2;
+  --surface-variant:            #B8C0C7;
+  --surface-tint:               #00796B;
+
+  --on-surface:                 #1A1C1E;
+  --on-surface-variant:         #44474A;
+
+  --primary:                    #000000;
+  --primary-fixed:              #00796B;
+  --primary-fixed-dim:          #00695C;
+  --on-primary:                 #FFFFFF;
+  --on-primary-container:       #B2DFDB;
+
+  --secondary:                  #44474A;
+  --on-secondary-container:     #5C5F62;
+
+  --error:                      #BA1A1A;
+  --on-error:                   #FFFFFF;
+
+  --outline-variant:            #C4C7C9;
+
+  --color-downloading:          var(--primary-fixed-dim);
+  --color-completed:            var(--primary-fixed);
+  --color-queued:               var(--secondary);
+  --color-paused:               var(--on-surface-variant);
+  --color-error:                var(--error);
+  --color-pending:              var(--outline-variant);
+}
+
+[data-theme="custom"] {
+  /* Injected dynamically from the user's saved configuration.
+     Falls back to dark theme tokens via :root if a value is missing. */
+}

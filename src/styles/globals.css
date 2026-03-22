@@ -1,0 +1,91 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+/* Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ============================================================
+   Base resets
+   ============================================================ */
+
+@layer base {
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--surface);
+    color: var(--on-surface);
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--surface-bright);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--on-surface-variant);
+  }
+}
+
+/* ============================================================
+   Typography utility classes
+   ============================================================ */
+
+@layer utilities {
+  .font-display { font-family: "Manrope", sans-serif; }
+  .font-body    { font-family: "Inter", sans-serif; }
+  .font-mono    { font-family: "JetBrains Mono", monospace; }
+
+  .text-display-lg { font-family: "Manrope", sans-serif; font-size: 2.25rem; font-weight: 800; letter-spacing: -0.02em; }
+  .text-display-sm { font-family: "Manrope", sans-serif; font-size: 1.5rem;  font-weight: 700; letter-spacing: -0.02em; }
+  .text-title-lg   { font-family: "Inter", sans-serif;   font-size: 1.25rem; font-weight: 600; }
+  .text-title-sm   { font-family: "Inter", sans-serif;   font-size: 1rem;    font-weight: 600; }
+  .text-body-md    { font-family: "Inter", sans-serif;   font-size: 0.875rem; font-weight: 400; }
+  .text-body-sm    { font-family: "Inter", sans-serif;   font-size: 0.75rem; font-weight: 400; }
+  .text-label-md   { font-family: "Inter", sans-serif;   font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05rem; }
+  .text-label-sm   { font-family: "Inter", sans-serif;   font-size: 0.625rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05rem; }
+  .text-mono-md    { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; font-weight: 400; }
+  .text-mono-sm    { font-family: "JetBrains Mono", monospace; font-size: 0.7rem; font-weight: 400; }
+}
+
+/* ============================================================
+   Glassmorphism utility
+   ============================================================ */
+
+@layer utilities {
+  .glass {
+    background: color-mix(in srgb, var(--surface-variant) 60%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+/* ============================================================
+   Drag region for custom title bar
+   ============================================================ */
+
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+}
