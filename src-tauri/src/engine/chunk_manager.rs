@@ -1,4 +1,5 @@
 use crate::db::chunks::ChunkRow;
+use crate::engine::governor::SpeedGovernor;
 use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -75,6 +76,7 @@ pub async fn download_chunk(
     cancel: CancellationToken,
     downloaded_counter: Arc<AtomicU64>,
     config: &serde_json::Value,
+    governor: &Arc<SpeedGovernor>,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
     let offset = chunk.downloaded_bytes;
@@ -132,6 +134,7 @@ pub async fn download_chunk(
         buf.extend_from_slice(&bytes);
 
         if buf.len() >= BUFFER_SIZE {
+            governor.acquire(buf.len() as u64).await;
             file.write_all(&buf).await.map_err(|e| e.to_string())?;
             downloaded_counter.fetch_add(buf.len() as u64, Ordering::Relaxed);
             buf.clear();
@@ -139,6 +142,7 @@ pub async fn download_chunk(
     }
 
     if !buf.is_empty() {
+        governor.acquire(buf.len() as u64).await;
         file.write_all(&buf).await.map_err(|e| e.to_string())?;
         downloaded_counter.fetch_add(buf.len() as u64, Ordering::Relaxed);
     }

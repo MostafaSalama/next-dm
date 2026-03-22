@@ -1,7 +1,30 @@
 use rusqlite::Connection;
 
-const MIGRATION: &str = include_str!("../../migrations/001_initial.sql");
+const MIGRATION_001: &str = include_str!("../../migrations/001_initial.sql");
+const MIGRATION_002: &str = include_str!("../../migrations/002_queue_paused.sql");
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(MIGRATION)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)",
+    )?;
+
+    let current: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM _migrations",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    if current < 1 {
+        conn.execute_batch(MIGRATION_001)?;
+        conn.execute("INSERT INTO _migrations (version) VALUES (1)", [])?;
+    }
+
+    if current < 2 {
+        conn.execute_batch(MIGRATION_002)?;
+        conn.execute("INSERT INTO _migrations (version) VALUES (2)", [])?;
+    }
+
+    Ok(())
 }

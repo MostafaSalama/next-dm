@@ -1,7 +1,8 @@
-import { useSettingsStore } from "../../stores/settingsStore";
+import { useState } from "react";
 import { useQueuesStore } from "../../stores/queuesStore";
 import { useTasksStore, getFileCategory, type CategoryFilter } from "../../stores/tasksStore";
 import { SpeedHUD } from "./SpeedHUD";
+import { QueueList } from "../sidebar/QueueList";
 
 const CATEGORIES: { label: string; value: CategoryFilter; icon: string }[] = [
   { label: "All Files", value: "all", icon: "📁" },
@@ -14,26 +15,52 @@ const CATEGORIES: { label: string; value: CategoryFilter; icon: string }[] = [
   { label: "Other", value: "other", icon: "📎" },
 ];
 
-export function Sidebar() {
-  const theme = useSettingsStore((s) => s.settings.theme);
-  const setTheme = useSettingsStore((s) => s.setTheme);
-  const queues = useQueuesStore((s) => s.queues);
-  const activeQueueId = useQueuesStore((s) => s.activeQueueId);
+interface SidebarProps {
+  onToggleSettings?: () => void;
+  showSettings?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ onToggleSettings, showSettings, onNavigate }: SidebarProps) {
+  const createQueue = useQueuesStore((s) => s.createQueue);
   const setActiveQueueId = useQueuesStore((s) => s.setActiveQueueId);
+  const activeQueueId = useQueuesStore((s) => s.activeQueueId);
   const categoryFilter = useTasksStore((s) => s.categoryFilter);
   const setCategoryFilter = useTasksStore((s) => s.setCategoryFilter);
+  const setFilterStatus = useTasksStore((s) => s.setFilterStatus);
   const tasks = useTasksStore((s) => s.tasks);
 
-  function taskCountForQueue(queueId: string) {
-    return tasks.filter(
-      (t) => t.queueId === queueId && (t.status === "downloading" || t.status === "queued"),
-    ).length;
-  }
+  const [showNewQueue, setShowNewQueue] = useState(false);
+  const [newQueueName, setNewQueueName] = useState("");
 
   function taskCountForCategory(cat: CategoryFilter) {
-    if (cat === "all") return tasks.length;
-    return tasks.filter((t) => getFileCategory(t.filename) === cat).length;
+    const filtered = activeQueueId
+      ? tasks.filter((t) => t.queueId === activeQueueId)
+      : tasks;
+    if (cat === "all") return filtered.length;
+    return filtered.filter((t) => getFileCategory(t.filename) === cat).length;
   }
+
+  const handleCategoryClick = (cat: CategoryFilter) => {
+    if (activeQueueId) {
+      setActiveQueueId(null);
+    }
+    setFilterStatus("all");
+    setCategoryFilter(cat);
+    onNavigate?.();
+  };
+
+  const handleCreateQueue = async () => {
+    const name = newQueueName.trim();
+    if (!name) return;
+    try {
+      await createQueue(name, "");
+      setNewQueueName("");
+      setShowNewQueue(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <aside
@@ -53,89 +80,63 @@ export function Sidebar() {
           >
             Queues
           </span>
-          <button
-            className="flex items-center justify-center rounded transition-colors duration-100"
-            style={{
-              width: 22,
-              height: 22,
-              color: "var(--on-surface-variant)",
-              fontSize: "0.875rem",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor =
-                "var(--surface-container-high)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "transparent")
-            }
-            title="New queue"
-          >
-            +
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowNewQueue(true)}
+              className="flex items-center justify-center rounded transition-colors duration-100"
+              style={{
+                width: 22,
+                height: 22,
+                color: "var(--on-surface-variant)",
+                fontSize: "0.875rem",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.backgroundColor =
+                  "var(--surface-container-high)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.backgroundColor = "transparent")
+              }
+              title="New queue"
+            >
+              +
+            </button>
+          </div>
         </div>
 
-        {queues.length === 0 ? (
-          <div
-            className="text-body-sm py-4 text-center"
-            style={{ color: "var(--on-surface-variant)", opacity: 0.5 }}
-          >
-            No queues yet
-          </div>
-        ) : (
-          <div className="flex flex-col gap-0.5">
-            {queues.map((q) => {
-              const active = activeQueueId === q.id;
-              const count = taskCountForQueue(q.id);
-              return (
-                <button
-                  key={q.id}
-                  onClick={() => setActiveQueueId(q.id)}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors duration-100"
-                  style={{
-                    backgroundColor: active
-                      ? "var(--surface-container-high)"
-                      : "transparent",
-                    color: "var(--on-surface)",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!active)
-                      e.currentTarget.style.backgroundColor =
-                        "var(--surface-container)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!active)
-                      e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                >
-                  <span
-                    className="rounded-full"
-                    style={{
-                      width: 7,
-                      height: 7,
-                      backgroundColor: "var(--primary-fixed-dim)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span className="text-body-sm truncate flex-1">{q.name}</span>
-                  {count > 0 && (
-                    <span
-                      className="text-mono-sm rounded-full px-1.5 py-0.5"
-                      style={{
-                        backgroundColor: "color-mix(in srgb, var(--primary-fixed-dim) 15%, transparent)",
-                        color: "var(--primary-fixed-dim)",
-                        fontSize: "0.6rem",
-                        minWidth: 18,
-                        textAlign: "center",
-                      }}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+        {showNewQueue && (
+          <div className="mb-2 flex gap-1">
+            <input
+              autoFocus
+              placeholder="Queue name"
+              value={newQueueName}
+              onChange={(e) => setNewQueueName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateQueue();
+                if (e.key === "Escape") {
+                  setShowNewQueue(false);
+                  setNewQueueName("");
+                }
+              }}
+              className="flex-1 rounded-lg px-2 py-1 text-body-sm outline-none"
+              style={{
+                backgroundColor: "var(--surface-container)",
+                color: "var(--on-surface)",
+                border:
+                  "1px solid color-mix(in srgb, var(--primary-fixed-dim) 30%, transparent)",
+              }}
+            />
+            <button
+              onClick={handleCreateQueue}
+              className="rounded-lg px-2 py-1 text-body-sm"
+              style={{ color: "var(--primary-fixed-dim)" }}
+            >
+              Add
+            </button>
           </div>
         )}
+
+        <QueueList onNavigate={onNavigate} />
 
         {/* Categories */}
         <div className="mt-5 mb-2">
@@ -153,7 +154,7 @@ export function Sidebar() {
             return (
               <button
                 key={cat.value}
-                onClick={() => setCategoryFilter(cat.value)}
+                onClick={() => handleCategoryClick(cat.value)}
                 className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors duration-100"
                 style={{
                   backgroundColor: active
@@ -194,40 +195,26 @@ export function Sidebar() {
         <SpeedHUD />
 
         <button
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onClick={onToggleSettings}
           className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-body-sm transition-colors duration-100 cursor-pointer"
-          style={{ color: "var(--on-surface-variant)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor =
-              "var(--surface-container)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "transparent")
-          }
+          style={{
+            color: showSettings ? "var(--primary-fixed)" : "var(--on-surface-variant)",
+            backgroundColor: showSettings ? "var(--surface-container-high)" : "transparent",
+          }}
+          onMouseEnter={(e) => {
+            if (!showSettings)
+              e.currentTarget.style.backgroundColor = "var(--surface-container)";
+          }}
+          onMouseLeave={(e) => {
+            if (!showSettings)
+              e.currentTarget.style.backgroundColor = "transparent";
+          }}
         >
-          {theme === "dark" ? (
-            <>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              Light Mode
-            </>
-          ) : (
-            <>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-              </svg>
-              Dark Mode
-            </>
-          )}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+          </svg>
+          Settings
         </button>
       </div>
     </aside>

@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import type { Task } from "../../stores/tasksStore";
 import { useTasksStore } from "../../stores/tasksStore";
 import { FileIcon } from "../../lib/fileIcons";
@@ -52,6 +53,11 @@ export const TaskRow = memo(function TaskRow({ task, style }: TaskRowProps) {
     () => invoke("cancel_tasks", { ids: [task.id] }),
     [task.id],
   );
+  const handleOpenFolder = useCallback(() => {
+    if (task.savePath) {
+      open(task.savePath).catch(() => {});
+    }
+  }, [task.savePath]);
 
   return (
     <div
@@ -147,6 +153,11 @@ export const TaskRow = memo(function TaskRow({ task, style }: TaskRowProps) {
 
           {/* Actions */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+            {task.status === "completed" && (
+              <ActionButton label="Open Folder" onClick={handleOpenFolder}>
+                <FolderOpenIcon />
+              </ActionButton>
+            )}
             {task.status === "downloading" && (
               <ActionButton label="Pause" onClick={handlePause}>
                 <PauseIcon />
@@ -269,6 +280,14 @@ function CancelIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function FolderOpenIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
     </svg>
   );
 }

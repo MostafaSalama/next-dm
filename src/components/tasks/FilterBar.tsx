@@ -1,4 +1,5 @@
-import { useTasksStore, type TaskStatus } from "../../stores/tasksStore";
+import { useTasksStore, type TaskStatus, getFileCategory } from "../../stores/tasksStore";
+import { useQueuesStore } from "../../stores/queuesStore";
 
 const FILTER_TABS: { label: string; value: TaskStatus | "all" }[] = [
   { label: "All", value: "all" },
@@ -14,10 +15,19 @@ export function FilterBar() {
   const searchQuery = useTasksStore((s) => s.searchQuery);
   const setSearchQuery = useTasksStore((s) => s.setSearchQuery);
   const tasks = useTasksStore((s) => s.tasks);
+  const categoryFilter = useTasksStore((s) => s.categoryFilter);
+  const activeQueueId = useQueuesStore((s) => s.activeQueueId);
 
   function countForStatus(status: TaskStatus | "all") {
-    if (status === "all") return tasks.length;
-    return tasks.filter((t) => t.status === status).length;
+    let filtered = tasks;
+    if (activeQueueId) {
+      filtered = filtered.filter((t) => t.queueId === activeQueueId);
+    }
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((t) => getFileCategory(t.filename) === categoryFilter);
+    }
+    if (status === "all") return filtered.length;
+    return filtered.filter((t) => t.status === status).length;
   }
 
   return (

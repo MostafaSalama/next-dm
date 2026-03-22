@@ -1,20 +1,26 @@
+import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useTasksStore } from "../../stores/tasksStore";
+import { useTasksStore, useFilteredTasks } from "../../stores/tasksStore";
+import { useQueuesStore } from "../../stores/queuesStore";
 import { AddUrlBar } from "../tasks/AddUrlBar";
 import { FilterBar } from "../tasks/FilterBar";
 import { TaskList } from "../tasks/TaskList";
 
-export function TaskStage() {
+interface TaskStageProps {
+  onOpenPreFlight: (urls: string[]) => void;
+}
+
+export function TaskStage({ onOpenPreFlight }: TaskStageProps) {
   const selectedIds = useTasksStore((s) => s.selectedIds);
   const clearSelection = useTasksStore((s) => s.clearSelection);
-  const filteredTasks = useTasksStore((s) => s.filteredTasks)();
+  const filteredTasks = useFilteredTasks();
 
   return (
     <main
       className="flex flex-col flex-1 h-full overflow-hidden"
       style={{ backgroundColor: "var(--surface-container-high)" }}
     >
-      <AddUrlBar />
+      <AddUrlBar onOpenPreFlight={onOpenPreFlight} />
       <FilterBar />
 
       {/* Bulk action bar */}
@@ -38,6 +44,7 @@ export function TaskStage() {
             label="Resume"
             onClick={() => invoke("resume_tasks", { ids: [...selectedIds] })}
           />
+          <MoveToQueueDropdown selectedIds={selectedIds} />
           <BulkAction
             label="Cancel"
             onClick={() => invoke("cancel_tasks", { ids: [...selectedIds] })}
@@ -61,6 +68,92 @@ export function TaskStage() {
       {/* Content area */}
       {filteredTasks.length === 0 ? <EmptyState /> : <TaskList />}
     </main>
+  );
+}
+
+function MoveToQueueDropdown({ selectedIds }: { selectedIds: Set<string> }) {
+  const queues = useQueuesStore((s) => s.queues);
+  const moveTasksToQueue = useQueuesStore((s) => s.moveTasksToQueue);
+  const updateTask = useTasksStore((s) => s.updateTask);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleMove = async (queueId: string) => {
+    const ids = [...selectedIds];
+    try {
+      await moveTasksToQueue(ids, queueId);
+      for (const id of ids) updateTask(id, { queueId });
+    } catch (e) {
+      console.error(e);
+    }
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-body-sm px-2.5 py-1 rounded-md transition-colors duration-100 flex items-center gap-1"
+        style={{ color: "var(--primary-fixed-dim)" }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.backgroundColor = "var(--surface-container)")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.backgroundColor = "transparent")
+        }
+      >
+        Move to Queue
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="currentColor"
+          style={{
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 100ms",
+          }}
+        >
+          <path d="M2 3.5L5 7L8 3.5" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute top-full right-0 mt-1 z-50 rounded-xl py-1.5 flex flex-col"
+          style={{
+            backgroundColor: "var(--surface-container-highest)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+            minWidth: 160,
+          }}
+        >
+          {queues.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => handleMove(q.id)}
+              className="text-body-sm px-4 py-1.5 text-left transition-colors duration-100"
+              style={{ color: "var(--on-surface)" }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.backgroundColor =
+                  "var(--surface-container)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.backgroundColor = "transparent")
+              }
+            >
+              {q.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

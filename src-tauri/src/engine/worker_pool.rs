@@ -1,7 +1,8 @@
 use crate::db::chunks::{self, ChunkRow};
-use crate::db::tasks;
+use crate::db::{queues, tasks};
 use crate::db::Database;
 use crate::engine::chunk_manager::{self, ChunkHandle};
+use crate::engine::governor::SpeedGovernor;
 use crate::engine::stitcher;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 pub struct ActiveTask {
     pub cancel_token: CancellationToken,
     pub chunk_handles: Vec<ChunkHandle>,
+    pub queue_id: String,
 }
 
 pub struct WorkerPool {
@@ -21,16 +23,23 @@ pub struct WorkerPool {
     db: Database,
     app_handle: tauri::AppHandle,
     max_concurrent: usize,
+    governor: Arc<SpeedGovernor>,
 }
 
 impl WorkerPool {
-    pub fn new(db: Database, app_handle: tauri::AppHandle, max_concurrent: usize) -> Self {
+    pub fn new(
+        db: Database,
+        app_handle: tauri::AppHandle,
+        max_concurrent: usize,
+        governor: Arc<SpeedGovernor>,
+    ) -> Self {
         Self {
             active_tasks: Arc::new(Mutex::new(HashMap::new())),
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             db,
             app_handle,
             max_concurrent,
+            governor,
         }
     }
 
@@ -45,17 +54,50 @@ impl WorkerPool {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            let available = self.semaphore.available_permits();
-            if available == 0 {
+            let global_available = self.semaphore.available_permits();
+            if global_available == 0 {
                 continue;
             }
 
-            let queued = {
+            let all_queues = {
                 let conn = self.db.conn();
-                tasks::get_queued_tasks(&conn, available).unwrap_or_default()
+                queues::get_all_queues(&conn).unwrap_or_default()
             };
 
-            for task in queued {
+            let active = self.active_tasks.lock().await;
+            let mut per_queue_active: HashMap<String, usize> = HashMap::new();
+            for task in active.values() {
+                *per_queue_active.entry(task.queue_id.clone()).or_insert(0) += 1;
+            }
+            drop(active);
+
+            let mut candidates: Vec<tasks::TaskRow> = Vec::new();
+
+            for queue in &all_queues {
+                if queue.is_paused {
+                    continue;
+                }
+
+                let active_count = per_queue_active.get(&queue.id).copied().unwrap_or(0);
+                let queue_limit = if queue.max_concurrent > 0 {
+                    (queue.max_concurrent as usize).saturating_sub(active_count)
+                } else {
+                    global_available
+                };
+
+                if queue_limit == 0 {
+                    continue;
+                }
+
+                let queued = {
+                    let conn = self.db.conn();
+                    tasks::get_queued_tasks_for_queue(&conn, &queue.id, queue_limit)
+                        .unwrap_or_default()
+                };
+                candidates.extend(queued);
+            }
+
+            for task in candidates {
                 let permit = match self.semaphore.clone().try_acquire_owned() {
                     Ok(p) => p,
                     Err(_) => break,
@@ -91,6 +133,7 @@ impl WorkerPool {
                         ActiveTask {
                             cancel_token: cancel_token.clone(),
                             chunk_handles,
+                            queue_id: task.queue_id.clone(),
                         },
                     );
                 }
@@ -98,6 +141,7 @@ impl WorkerPool {
                 let db = self.db.clone();
                 let active_tasks = self.active_tasks.clone();
                 let app_handle = self.app_handle.clone();
+                let governor = self.governor.clone();
                 let supports_range = task.total_bytes > 0 && task_chunks.len() > 1;
                 let config: serde_json::Value =
                     serde_json::from_str(&task.config).unwrap_or_default();
@@ -111,6 +155,7 @@ impl WorkerPool {
                         cancel_token.clone(),
                         &active_tasks,
                         &config,
+                        &governor,
                     )
                     .await;
 
@@ -128,9 +173,7 @@ impl WorkerPool {
                                 }),
                             );
                         }
-                        Err(ref e) if e == "cancelled" => {
-                            // Pause handled by the caller
-                        }
+                        Err(ref e) if e == "cancelled" => {}
                         Err(e) => {
                             let conn = db.conn();
                             let _ =
@@ -157,6 +200,7 @@ impl WorkerPool {
         cancel_token: CancellationToken,
         active_tasks: &Arc<Mutex<HashMap<String, ActiveTask>>>,
         config: &serde_json::Value,
+        governor: &Arc<SpeedGovernor>,
     ) -> Result<(), String> {
         let mut handles = Vec::new();
 
@@ -180,11 +224,14 @@ impl WorkerPool {
             let cancel = cancel_token.clone();
             let counter = counters[i].clone();
             let cfg = config.clone();
+            let gov = governor.clone();
 
             let chunk_id = chunk.id.clone();
             let handle = tokio::spawn(async move {
-                chunk_manager::download_chunk(&url, &chunk, supports_range, cancel, counter, &cfg)
-                    .await
+                chunk_manager::download_chunk(
+                    &url, &chunk, supports_range, cancel, counter, &cfg, &gov,
+                )
+                .await
             });
             handles.push((i, chunk_id, handle));
         }

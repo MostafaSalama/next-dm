@@ -1,82 +1,23 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { useTasksStore } from "../../stores/tasksStore";
-import { useQueuesStore } from "../../stores/queuesStore";
 
-interface FileInfo {
-  url: string;
-  filename: string;
-  size: number;
-  supportsRange: boolean;
+interface AddUrlBarProps {
+  onOpenPreFlight: (urls: string[]) => void;
 }
 
-export function AddUrlBar() {
+export function AddUrlBar({ onOpenPreFlight }: AddUrlBarProps) {
   const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const queues = useQueuesStore((s) => s.queues);
-  const tasks = useTasksStore((s) => s.tasks);
-  const setTasks = useTasksStore((s) => s.setTasks);
 
-  const handleDownload = async () => {
+  const handleSubmit = () => {
     const trimmed = url.trim();
     if (!trimmed) return;
 
-    setLoading(true);
-    try {
-      const infos = await invoke<FileInfo[]>("preflight_check", {
-        urls: [trimmed],
-      });
-      const info = infos[0];
-      if (!info) return;
+    const urls = trimmed
+      .split(/[\n\s]+/)
+      .filter((u) => /^https?:\/\//.test(u));
 
-      const queueId = queues[0]?.id ?? "default";
-      const savePath = queues[0]?.savePath ?? "";
-
-      const ids = await invoke<string[]>("create_tasks", {
-        input: [
-          {
-            url: info.url,
-            filename: info.filename,
-            originalName: info.filename,
-            savePath,
-            totalBytes: info.size,
-            supportsRange: info.supportsRange,
-            queueId,
-            tags: [],
-            config: {},
-          },
-        ],
-      });
-
-      if (ids.length > 0) {
-        setTasks([
-          ...tasks,
-          {
-            id: ids[0],
-            url: info.url,
-            filename: info.filename,
-            originalName: info.filename,
-            savePath,
-            status: "queued",
-            totalBytes: info.size,
-            downloadedBytes: 0,
-            speedBps: 0,
-            etaSeconds: 0,
-            queueId,
-            priority: 0,
-            tags: [],
-            errorMessage: null,
-            chunks: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ]);
-        setUrl("");
-      }
-    } catch (e) {
-      console.error("Download failed:", e);
-    } finally {
-      setLoading(false);
+    if (urls.length > 0) {
+      onOpenPreFlight(urls);
+      setUrl("");
     }
   };
 
@@ -105,7 +46,7 @@ export function AddUrlBar() {
           type="text"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleDownload()}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           placeholder="Paste a URL to download..."
           className="w-full rounded-lg pl-9 pr-4 py-2 text-body-sm outline-none transition-all duration-150"
           style={{
@@ -123,38 +64,29 @@ export function AddUrlBar() {
         />
       </div>
       <button
-        onClick={handleDownload}
-        disabled={loading || !url.trim()}
+        onClick={handleSubmit}
+        disabled={!url.trim()}
         className="rounded-lg px-4 py-2 text-body-sm font-semibold transition-all duration-150"
         style={{
           backgroundColor: "var(--primary-fixed)",
           color: "var(--on-primary)",
-          opacity: loading || !url.trim() ? 0.4 : 1,
+          opacity: !url.trim() ? 0.4 : 1,
         }}
         onMouseEnter={(e) => {
-          if (!loading && url.trim())
+          if (url.trim())
             e.currentTarget.style.backgroundColor = "var(--primary-fixed-dim)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = "var(--primary-fixed)";
         }}
       >
-        {loading ? (
-          <span className="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
-              <circle cx="12" cy="12" r="10" strokeDasharray="31.4" strokeDashoffset="10" />
-            </svg>
-            Checking
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <polyline points="19 12 12 19 5 12" />
-            </svg>
-            Download
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </svg>
+          Download
+        </span>
       </button>
     </div>
   );

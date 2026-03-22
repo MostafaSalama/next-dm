@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { create } from "zustand";
+import { useQueuesStore } from "./queuesStore";
 
 export type TaskStatus =
   | "pending"
@@ -141,25 +143,53 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   filteredTasks: () => {
     const { tasks, filterStatus, searchQuery, categoryFilter } = get();
-    let result = tasks;
-
-    if (filterStatus !== "all") {
-      result = result.filter((t) => t.status === filterStatus);
-    }
-
-    if (categoryFilter !== "all") {
-      result = result.filter((t) => getFileCategory(t.filename) === categoryFilter);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.filename.toLowerCase().includes(q) ||
-          t.url.toLowerCase().includes(q),
-      );
-    }
-
-    return result;
+    const activeQueueId = useQueuesStore.getState().activeQueueId;
+    return computeFilteredTasks(tasks, filterStatus, categoryFilter, searchQuery, activeQueueId);
   },
 }));
+
+function computeFilteredTasks(
+  tasks: Task[],
+  filterStatus: TaskStatus | "all",
+  categoryFilter: CategoryFilter,
+  searchQuery: string,
+  activeQueueId: string | null,
+): Task[] {
+  let result = tasks;
+
+  if (activeQueueId) {
+    result = result.filter((t) => t.queueId === activeQueueId);
+  }
+
+  if (filterStatus !== "all") {
+    result = result.filter((t) => t.status === filterStatus);
+  }
+
+  if (categoryFilter !== "all") {
+    result = result.filter((t) => getFileCategory(t.filename) === categoryFilter);
+  }
+
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    result = result.filter(
+      (t) =>
+        t.filename.toLowerCase().includes(q) ||
+        t.url.toLowerCase().includes(q),
+    );
+  }
+
+  return result;
+}
+
+export function useFilteredTasks(): Task[] {
+  const tasks = useTasksStore((s) => s.tasks);
+  const filterStatus = useTasksStore((s) => s.filterStatus);
+  const categoryFilter = useTasksStore((s) => s.categoryFilter);
+  const searchQuery = useTasksStore((s) => s.searchQuery);
+  const activeQueueId = useQueuesStore((s) => s.activeQueueId);
+
+  return useMemo(
+    () => computeFilteredTasks(tasks, filterStatus, categoryFilter, searchQuery, activeQueueId),
+    [tasks, filterStatus, categoryFilter, searchQuery, activeQueueId],
+  );
+}

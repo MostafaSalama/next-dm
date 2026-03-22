@@ -17,6 +17,7 @@ use tauri::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -61,19 +62,30 @@ pub fn run() {
             let database =
                 Database::init(app_data_dir).expect("failed to initialize database");
 
-            // Read max_concurrent from settings
-            let max_concurrent = {
+            // Read settings from DB
+            let (max_concurrent, global_speed_limit) = {
                 let conn = database.conn();
-                db::settings::get_setting_i64(&conn, "max_concurrent", 5) as usize
+                let mc = db::settings::get_setting_i64(&conn, "max_concurrent", 5) as usize;
+                let gsl = db::settings::get_setting_i64(&conn, "global_speed_limit", 0) as u64;
+                (mc, gsl)
             };
 
             // Download engine
             let engine_handle = app.handle().clone();
-            let engine = DownloadEngine::new(database.clone(), engine_handle, max_concurrent);
+            let engine = DownloadEngine::new(
+                database.clone(),
+                engine_handle,
+                max_concurrent,
+                global_speed_limit,
+            );
 
             // Event emitter
             let emitter_handle = app.handle().clone();
             services::events::start_event_emitter(emitter_handle, engine.pool.clone());
+
+            // Clipboard monitor
+            let clipboard_handle = app.handle().clone();
+            services::clipboard::start_clipboard_monitor(clipboard_handle, database.clone());
 
             // Shared state
             app.manage(AppState {
@@ -102,6 +114,14 @@ pub fn run() {
             commands::tasks::cancel_tasks,
             commands::tasks::delete_tasks,
             commands::tasks::get_all_queues,
+            commands::queues::create_queue,
+            commands::queues::update_queue,
+            commands::queues::delete_queue,
+            commands::queues::reorder_queues,
+            commands::queues::move_tasks_to_queue,
+            commands::queues::set_queue_paused,
+            commands::settings::get_all_settings,
+            commands::settings::update_setting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

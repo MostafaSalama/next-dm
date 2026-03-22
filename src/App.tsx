@@ -1,19 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TaskStage } from "./components/layout/TaskStage";
+import { SettingsView } from "./components/settings/SettingsView";
+import { PreFlightModal } from "./components/modals/PreFlightModal";
+import { ClipboardToast } from "./components/notifications/ClipboardToast";
 import { useDownloadEvents } from "./hooks/useDownloadEvents";
 import { useTasksStore, type Task } from "./stores/tasksStore";
 import { useQueuesStore, type Queue } from "./stores/queuesStore";
+import { useSettingsStore } from "./stores/settingsStore";
 
 export function App() {
   const setTasks = useTasksStore((s) => s.setTasks);
   const setQueues = useQueuesStore((s) => s.setQueues);
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
+
+  const [preFlightOpen, setPreFlightOpen] = useState(false);
+  const [preFlightUrls, setPreFlightUrls] = useState<string[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
 
   useDownloadEvents();
 
   useEffect(() => {
+    loadSettings();
+
     invoke<TaskFromBackend[]>("get_all_tasks").then((tasks) => {
       setTasks(
         tasks.map((t) => ({
@@ -43,15 +54,86 @@ export function App() {
     });
 
     invoke<Queue[]>("get_all_queues").then(setQueues);
-  }, [setTasks, setQueues]);
+  }, [setTasks, setQueues, loadSettings]);
+
+  const openPreFlight = useCallback((urls: string[]) => {
+    setPreFlightUrls(urls);
+    setPreFlightOpen(true);
+  }, []);
+
+  const closePreFlight = useCallback(() => {
+    setPreFlightOpen(false);
+    setPreFlightUrls([]);
+  }, []);
+
+  const toggleSettings = useCallback(() => {
+    setShowSettings((prev) => !prev);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
+
+  useEffect(() => {
+    const handleComma = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings((prev) => !prev);
+      }
+    };
+    document.addEventListener("keydown", handleComma);
+    return () => document.removeEventListener("keydown", handleComma);
+  }, []);
+
+  useEffect(() => {
+    const handlePaste = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === "v" &&
+        !preFlightOpen
+      ) {
+        const activeTag = (document.activeElement as HTMLElement)?.tagName;
+        if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") {
+          return;
+        }
+
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            const urls = text
+              .split(/[\n\s]+/)
+              .filter((u) => /^https?:\/\//.test(u.trim()))
+              .map((u) => u.trim());
+            if (urls.length > 0) {
+              e.preventDefault();
+              openPreFlight(urls);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+
+    document.addEventListener("keydown", handlePaste);
+    return () => document.removeEventListener("keydown", handlePaste);
+  }, [preFlightOpen, openPreFlight]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <TaskStage />
+        <Sidebar onToggleSettings={toggleSettings} showSettings={showSettings} onNavigate={closeSettings} />
+        {showSettings ? (
+          <SettingsView />
+        ) : (
+          <TaskStage onOpenPreFlight={openPreFlight} />
+        )}
       </div>
+
+      {preFlightOpen && (
+        <PreFlightModal urls={preFlightUrls} onClose={closePreFlight} />
+      )}
+
+      <ClipboardToast onAddToQueue={openPreFlight} />
     </div>
   );
 }

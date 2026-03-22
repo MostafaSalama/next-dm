@@ -120,3 +120,49 @@ pub fn delete_task(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+pub fn get_queued_tasks_for_queue(
+    conn: &Connection,
+    queue_id: &str,
+    limit: usize,
+) -> Result<Vec<TaskRow>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, created_at, updated_at FROM tasks WHERE status = 'queued' AND queue_id = ?1 ORDER BY priority ASC, created_at ASC LIMIT ?2"
+    )?;
+    let rows = stmt.query_map(params![queue_id, limit as i64], |row| {
+        Ok(TaskRow {
+            id: row.get(0)?,
+            url: row.get(1)?,
+            filename: row.get(2)?,
+            original_name: row.get(3)?,
+            save_path: row.get(4)?,
+            status: row.get(5)?,
+            total_bytes: row.get(6)?,
+            downloaded_bytes: row.get(7)?,
+            queue_id: row.get(8)?,
+            priority: row.get(9)?,
+            tags: row.get(10)?,
+            config: row.get(11)?,
+            error_message: row.get(12)?,
+            retry_count: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn move_tasks_to_queue(
+    conn: &Connection,
+    task_ids: &[String],
+    queue_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    for id in task_ids {
+        tx.execute(
+            "UPDATE tasks SET queue_id = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![queue_id, id],
+        )?;
+    }
+    tx.commit()
+}

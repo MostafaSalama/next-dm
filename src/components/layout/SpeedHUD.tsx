@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTasksStore } from "../../stores/tasksStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { formatSpeed } from "../../lib/formatters";
 
 const MAX_POINTS = 60;
@@ -10,6 +11,8 @@ export function SpeedHUD() {
   const tasks = useTasksStore((s) => s.tasks);
   const [history, setHistory] = useState<number[]>(() => Array.from({ length: MAX_POINTS }, () => 0));
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  const globalSpeedLimit = useSettingsStore((s) => s.settings.globalSpeedLimit);
 
   const activeTasks = tasks.filter((t) => t.status === "downloading");
   const aggregateSpeed = activeTasks.reduce((sum, t) => sum + t.speedBps, 0);
@@ -57,6 +60,14 @@ export function SpeedHUD() {
       >
         {activeCount} active {activeCount === 1 ? "download" : "downloads"}
       </div>
+      {globalSpeedLimit > 0 && (
+        <div
+          className="text-mono-sm mt-0.5"
+          style={{ color: "var(--primary-fixed-dim)", fontSize: "0.6rem", opacity: 0.8 }}
+        >
+          capped at {formatSpeed(globalSpeedLimit)}
+        </div>
+      )}
 
       <svg
         viewBox={`0 0 ${SPARKLINE_W} ${SPARKLINE_H}`}

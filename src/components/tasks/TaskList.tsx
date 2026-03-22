@@ -1,13 +1,13 @@
 import { useRef, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useTasksStore } from "../../stores/tasksStore";
+import { useTasksStore, useFilteredTasks } from "../../stores/tasksStore";
 import { TaskRow } from "./TaskRow";
 
 const ROW_HEIGHT = 80;
 const ROW_GAP = 8;
 
 export function TaskList() {
-  const filteredTasks = useTasksStore((s) => s.filteredTasks)();
+  const filteredTasks = useFilteredTasks();
   const toggleSelected = useTasksStore((s) => s.toggleSelected);
   const selectRange = useTasksStore((s) => s.selectRange);
   const clearSelection = useTasksStore((s) => s.clearSelection);
