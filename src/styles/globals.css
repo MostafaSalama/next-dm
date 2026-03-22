@@ -74,6 +74,75 @@
 }
 
 /* ============================================================
+   Animations
+   ============================================================ */
+
+@keyframes progress-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+@layer utilities {
+  .progress-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--on-primary-container) 0%,
+      var(--primary-fixed-dim) 40%,
+      var(--primary-fixed) 50%,
+      var(--primary-fixed-dim) 60%,
+      var(--on-primary-container) 100%
+    );
+    background-size: 200% 100%;
+    animation: progress-shimmer 2s ease-in-out infinite;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.25s ease-out both;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+}
+
+/* ============================================================
+   Status badge
+   ============================================================ */
+
+@layer utilities {
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-family: "Inter", sans-serif;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+}
+
+/* ============================================================
    Drag region for custom title bar
    ============================================================ */
 
