@@ -249,6 +249,52 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* Keyboard Shortcuts */}
+        <section>
+          <SectionHeader title="Keyboard Shortcuts" />
+          <div
+            className="rounded-xl p-4 flex flex-col gap-0"
+            style={{ backgroundColor: "var(--surface-container-low)" }}
+          >
+            <ShortcutRow keys={["Ctrl", "V"]} description="Paste URLs and open Pre-Flight modal" />
+            <ShortcutRow keys={["Ctrl", ","]} description="Toggle Settings" />
+            <ShortcutRow keys={["Ctrl", "A"]} description="Select all visible tasks" />
+            <ShortcutRow keys={["Ctrl", "Enter"]} description="Add URLs in Pre-Flight textarea" />
+            <ShortcutRow keys={["Shift", "Click"]} description="Select range of tasks" />
+            <ShortcutRow keys={["Escape"]} description="Close modal / cancel edit" />
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section>
+          <SectionHeader title="How It Works" />
+          <div
+            className="rounded-xl p-4 flex flex-col gap-3"
+            style={{ backgroundColor: "var(--surface-container-low)" }}
+          >
+            <InfoBlock
+              title="Clipboard Monitoring"
+              text="When enabled, Next DM watches your clipboard for URLs. Detected links appear as toast notifications so you can add them to a queue or download immediately."
+            />
+            <InfoBlock
+              title="Multi-Part Downloads"
+              text="Large files are split into multiple chunks and downloaded in parallel, then stitched back together. This maximizes bandwidth and supports resuming interrupted downloads."
+            />
+            <InfoBlock
+              title="Queues"
+              text="Organize downloads into queues with per-queue concurrency limits, speed caps, and save folders. Right-click a queue for options like pause, clear, or rename."
+            />
+            <InfoBlock
+              title="Batch Naming"
+              text="In the Pre-Flight modal, use pattern tokens like {original}, {index}, {ext}, {queue}, and {tags} to rename multiple files at once before downloading."
+            />
+            <InfoBlock
+              title="Archive"
+              text="Move completed or old downloads to the Archive to keep your main view clean. Restore or permanently delete them from the archive section in the sidebar."
+            />
+          </div>
+        </section>
+
         {/* About */}
         <section>
           <SectionHeader title="About" />
@@ -279,6 +325,60 @@ export function SettingsView() {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function ShortcutRow({ keys, description }: { keys: string[]; description: string }) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <span className="text-body-sm" style={{ color: "var(--on-surface-variant)" }}>
+        {description}
+      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        {keys.map((key, i) => (
+          <span key={i}>
+            {i > 0 && (
+              <span
+                className="text-mono-sm mx-0.5"
+                style={{ color: "var(--on-surface-variant)", opacity: 0.3 }}
+              >
+                +
+              </span>
+            )}
+            <kbd
+              className="inline-block rounded px-1.5 py-0.5 text-mono-sm"
+              style={{
+                backgroundColor: "var(--surface-container)",
+                color: "var(--on-surface)",
+                fontSize: "0.65rem",
+                border: "1px solid color-mix(in srgb, var(--outline) 20%, transparent)",
+              }}
+            >
+              {key}
+            </kbd>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InfoBlock({ title, text }: { title: string; text: string }) {
+  return (
+    <div>
+      <span
+        className="text-body-sm font-medium block mb-0.5"
+        style={{ color: "var(--on-surface)" }}
+      >
+        {title}
+      </span>
+      <span
+        className="text-body-sm"
+        style={{ color: "var(--on-surface-variant)", lineHeight: 1.5 }}
+      >
+        {text}
+      </span>
     </div>
   );
 }

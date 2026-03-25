@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TaskStage } from "./components/layout/TaskStage";
+import { ArchiveView } from "./components/layout/ArchiveView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { PreFlightModal } from "./components/modals/PreFlightModal";
 import { ClipboardToast } from "./components/notifications/ClipboardToast";
@@ -16,6 +17,8 @@ export function App() {
   const setQueues = useQueuesStore((s) => s.setQueues);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
+  const showArchiveView = useTasksStore((s) => s.showArchive);
+
   const [preFlightOpen, setPreFlightOpen] = useState(false);
   const [preFlightUrls, setPreFlightUrls] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
@@ -27,29 +30,7 @@ export function App() {
 
     invoke<TaskFromBackend[]>("get_all_tasks").then((tasks) => {
       setTasks(
-        tasks.map((t) => ({
-          id: t.id,
-          url: t.url,
-          filename: t.filename,
-          originalName: t.originalName,
-          savePath: t.savePath,
-          status: t.status as Task["status"],
-          totalBytes: t.totalBytes,
-          downloadedBytes: t.downloadedBytes,
-          speedBps: t.speedBps ?? 0,
-          etaSeconds: t.etaSeconds ?? 0,
-          queueId: t.queueId,
-          priority: t.priority,
-          tags: JSON.parse(t.tags || "[]"),
-          errorMessage: t.errorMessage,
-          chunks: (t.chunks ?? []).map((c: ChunkFromBackend) => ({
-            index: c.chunkIndex,
-            downloadedBytes: c.downloadedBytes,
-            totalBytes: c.endByte - c.startByte + 1,
-          })),
-          createdAt: t.createdAt,
-          updatedAt: t.updatedAt,
-        })),
+        tasks.map((t) => mapBackendTask(t)),
       );
     });
 
@@ -124,6 +105,8 @@ export function App() {
         <Sidebar onToggleSettings={toggleSettings} showSettings={showSettings} onNavigate={closeSettings} />
         {showSettings ? (
           <SettingsView />
+        ) : showArchiveView ? (
+          <ArchiveView />
         ) : (
           <TaskStage onOpenPreFlight={openPreFlight} />
         )}
@@ -161,7 +144,35 @@ interface TaskFromBackend {
   tags: string;
   config: string;
   errorMessage: string | null;
+  isArchived: boolean;
   chunks: ChunkFromBackend[];
   createdAt: string;
   updatedAt: string;
+}
+
+function mapBackendTask(t: TaskFromBackend): Task {
+  return {
+    id: t.id,
+    url: t.url,
+    filename: t.filename,
+    originalName: t.originalName,
+    savePath: t.savePath,
+    status: t.status as Task["status"],
+    totalBytes: t.totalBytes,
+    downloadedBytes: t.downloadedBytes,
+    speedBps: t.speedBps ?? 0,
+    etaSeconds: t.etaSeconds ?? 0,
+    queueId: t.queueId,
+    priority: t.priority,
+    tags: JSON.parse(t.tags || "[]"),
+    errorMessage: t.errorMessage,
+    isArchived: t.isArchived ?? false,
+    chunks: (t.chunks ?? []).map((c: ChunkFromBackend) => ({
+      index: c.chunkIndex,
+      downloadedBytes: c.downloadedBytes,
+      totalBytes: c.endByte - c.startByte + 1,
+    })),
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
 }

@@ -28,12 +28,12 @@ impl Database {
             .to_string();
 
         let current_path = settings::get_setting(&conn, "default_save_path")?;
-        if current_path.as_deref() == Some("\"\"") || current_path.is_none() {
-            settings::set_setting(
-                &conn,
-                "default_save_path",
-                &format!("\"{}\"", downloads_dir.replace('\\', "\\\\")),
-            )?;
+        let needs_init = match current_path.as_deref() {
+            None | Some("") | Some("\"\"") => true,
+            _ => false,
+        };
+        if needs_init {
+            settings::set_setting(&conn, "default_save_path", &downloads_dir)?;
         }
 
         queues::ensure_default_queue(&conn, &downloads_dir)?;

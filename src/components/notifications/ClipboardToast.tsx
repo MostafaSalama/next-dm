@@ -63,7 +63,7 @@ export function ClipboardToast({ onAddToQueue }: ClipboardToastProps) {
             originalName: info.filename, savePath, status: "queued",
             totalBytes: info.size, downloadedBytes: 0, speedBps: 0,
             etaSeconds: 0, queueId, priority: 0, tags: [],
-            errorMessage: null, chunks: [],
+            errorMessage: null, isArchived: false, chunks: [],
             createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           };
           useTasksStore.getState().setTasks([...currentTasks, newTask]);
@@ -174,6 +174,7 @@ export function ClipboardToast({ onAddToQueue }: ClipboardToastProps) {
             priority: 0,
             tags: [],
             errorMessage: null,
+            isArchived: false,
             chunks: [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

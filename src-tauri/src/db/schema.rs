@@ -2,6 +2,7 @@ use rusqlite::Connection;
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_initial.sql");
 const MIGRATION_002: &str = include_str!("../../migrations/002_queue_paused.sql");
+const MIGRATION_003: &str = include_str!("../../migrations/003_task_archived.sql");
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -24,6 +25,11 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     if current < 2 {
         conn.execute_batch(MIGRATION_002)?;
         conn.execute("INSERT INTO _migrations (version) VALUES (2)", [])?;
+    }
+
+    if current < 3 {
+        conn.execute_batch(MIGRATION_003)?;
+        conn.execute("INSERT INTO _migrations (version) VALUES (3)", [])?;
     }
 
     Ok(())

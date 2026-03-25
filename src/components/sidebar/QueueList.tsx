@@ -35,6 +35,7 @@ export function QueueList({ onNavigate }: QueueListProps) {
   const tasks = useTasksStore((s) => s.tasks);
   const setCategoryFilter = useTasksStore((s) => s.setCategoryFilter);
   const setFilterStatus = useTasksStore((s) => s.setFilterStatus);
+  const setShowArchive = useTasksStore((s) => s.setShowArchive);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
@@ -109,6 +110,7 @@ export function QueueList({ onNavigate }: QueueListProps) {
                 onClick={() => {
                   setCategoryFilter("all");
                   setFilterStatus("all");
+                  setShowArchive(false);
                   setActiveQueueId(q.id);
                   onNavigate?.();
                 }}

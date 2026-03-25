@@ -2,6 +2,7 @@ use crate::db::{chunks, settings, tasks};
 use crate::engine::chunk_manager;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,16 +39,33 @@ pub async fn create_tasks(
     let num_chunks = settings::get_setting_i64(&conn, "default_chunks", 8);
     let threshold = settings::get_setting_i64(&conn, "chunk_threshold_bytes", 1048576);
 
+    let fallback_dir = settings::get_setting(&conn, "default_save_path")
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty() && s != "\"\"")
+        .unwrap_or_else(|| {
+            dirs_next::download_dir()
+                .unwrap_or_else(|| std::env::temp_dir())
+                .to_string_lossy()
+                .to_string()
+        });
+
     for item in &input {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
+
+        let effective_save_path = if item.save_path.is_empty() {
+            fallback_dir.clone()
+        } else {
+            item.save_path.clone()
+        };
 
         let task_row = tasks::TaskRow {
             id: id.clone(),
             url: item.url.clone(),
             filename: item.filename.clone(),
             original_name: item.original_name.clone(),
-            save_path: item.save_path.clone(),
+            save_path: effective_save_path.clone(),
             status: "queued".to_string(),
             total_bytes: item.total_bytes,
             downloaded_bytes: 0,
@@ -57,6 +75,7 @@ pub async fn create_tasks(
             config: serde_json::to_string(&item.config).unwrap_or_else(|_| "{}".to_string()),
             error_message: None,
             retry_count: 0,
+            is_archived: false,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -68,7 +87,7 @@ pub async fn create_tasks(
             item.total_bytes,
             item.supports_range,
             num_chunks,
-            &item.save_path,
+            &effective_save_path,
             &item.filename,
             threshold,
         );
@@ -149,4 +168,93 @@ pub async fn get_all_queues(
 ) -> Result<Vec<crate::db::queues::QueueRow>, String> {
     let conn = state.db.conn();
     crate::db::queues::get_all_queues(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn archive_tasks(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.db.conn();
+    tasks::set_tasks_archived(&conn, &ids, true).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn unarchive_tasks(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.db.conn();
+    tasks::set_tasks_archived(&conn, &ids, false).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_archived_tasks(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<TaskWithChunks>, String> {
+    let conn = state.db.conn();
+    let archived = tasks::get_archived_tasks(&conn).map_err(|e| e.to_string())?;
+    Ok(archived
+        .into_iter()
+        .map(|task| TaskWithChunks {
+            task,
+            chunks: vec![],
+            speed_bps: 0,
+            eta_seconds: 0.0,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn open_file_location(save_path: String, filename: String) -> Result<(), String> {
+    let save_dir = if save_path.is_empty() {
+        dirs_next::download_dir()
+            .unwrap_or_else(|| std::env::temp_dir())
+            .to_string_lossy()
+            .to_string()
+    } else {
+        save_path
+    };
+
+    let file = PathBuf::from(&save_dir).join(&filename);
+    let dir = PathBuf::from(&save_dir);
+
+    #[cfg(target_os = "windows")]
+    {
+        if file.exists() {
+            std::process::Command::new("explorer")
+                .arg(format!("/select,{}", file.to_string_lossy()))
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else if dir.exists() {
+            std::process::Command::new("explorer")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            return Err(format!("Directory not found: {}", save_dir));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if file.exists() {
+            std::process::Command::new("open")
+                .args(["-R", &file.to_string_lossy()])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            std::process::Command::new("open")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

@@ -111,6 +111,30 @@ export function QueueContextMenu({
     onClose();
   };
 
+  const handleClearCompleted = async () => {
+    try {
+      const removedIds = await invoke<string[]>("clear_queue", { id: queueId, completedOnly: true });
+      const taskStore = useTasksStore.getState();
+      const remaining = taskStore.tasks.filter((t) => !removedIds.includes(t.id));
+      taskStore.setTasks(remaining);
+    } catch (e) {
+      console.error(e);
+    }
+    onClose();
+  };
+
+  const handleClearAll = async () => {
+    try {
+      const removedIds = await invoke<string[]>("clear_queue", { id: queueId, completedOnly: false });
+      const taskStore = useTasksStore.getState();
+      const remaining = taskStore.tasks.filter((t) => !removedIds.includes(t.id));
+      taskStore.setTasks(remaining);
+    } catch (e) {
+      console.error(e);
+    }
+    onClose();
+  };
+
   const handleDelete = async () => {
     if (queues.length <= 1) return;
     try {
@@ -209,6 +233,12 @@ export function QueueContextMenu({
       />
       <MenuItem label="Pause All Tasks" onClick={handlePauseAll} />
       <MenuItem label="Resume All Tasks" onClick={handleResumeAll} />
+      <div
+        className="my-1"
+        style={{ height: 1, backgroundColor: "var(--surface-container)" }}
+      />
+      <MenuItem label="Clear Completed" onClick={handleClearCompleted} />
+      <MenuItem label="Clear All Tasks" onClick={handleClearAll} danger />
       <div
         className="my-1"
         style={{ height: 1, backgroundColor: "var(--surface-container)" }}

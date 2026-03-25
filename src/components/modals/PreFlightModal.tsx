@@ -182,6 +182,7 @@ export function PreFlightModal({ urls: initialUrls, onClose }: PreFlightModalPro
         priority: 0,
         tags: taskInputs[i].tags,
         errorMessage: null,
+        isArchived: false,
         chunks: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

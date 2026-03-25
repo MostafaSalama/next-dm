@@ -13,6 +13,7 @@ interface TaskStageProps {
 export function TaskStage({ onOpenPreFlight }: TaskStageProps) {
   const selectedIds = useTasksStore((s) => s.selectedIds);
   const clearSelection = useTasksStore((s) => s.clearSelection);
+  const archiveTasks = useTasksStore((s) => s.archiveTasks);
   const filteredTasks = useFilteredTasks();
 
   return (
@@ -45,6 +46,10 @@ export function TaskStage({ onOpenPreFlight }: TaskStageProps) {
             onClick={() => invoke("resume_tasks", { ids: [...selectedIds] })}
           />
           <MoveToQueueDropdown selectedIds={selectedIds} />
+          <BulkAction
+            label="Archive"
+            onClick={() => archiveTasks([...selectedIds])}
+          />
           <BulkAction
             label="Cancel"
             onClick={() => invoke("cancel_tasks", { ids: [...selectedIds] })}

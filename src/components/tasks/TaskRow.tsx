@@ -1,6 +1,5 @@
 import { memo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-shell";
 import type { Task } from "../../stores/tasksStore";
 import { useTasksStore } from "../../stores/tasksStore";
 import { FileIcon } from "../../lib/fileIcons";
@@ -55,9 +54,12 @@ export const TaskRow = memo(function TaskRow({ task, style }: TaskRowProps) {
   );
   const handleOpenFolder = useCallback(() => {
     if (task.savePath) {
-      open(task.savePath).catch(() => {});
+      invoke("open_file_location", {
+        savePath: task.savePath,
+        filename: task.filename,
+      }).catch(() => {});
     }
-  }, [task.savePath]);
+  }, [task.savePath, task.filename]);
 
   return (
     <div

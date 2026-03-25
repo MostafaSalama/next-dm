@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQueuesStore } from "../../stores/queuesStore";
 import { useTasksStore, getFileCategory, type CategoryFilter } from "../../stores/tasksStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { SpeedHUD } from "./SpeedHUD";
 import { QueueList } from "../sidebar/QueueList";
+import { invoke } from "@tauri-apps/api/core";
 
 const CATEGORIES: { label: string; value: CategoryFilter; icon: string }[] = [
   { label: "All Files", value: "all", icon: "📁" },
@@ -29,6 +31,10 @@ export function Sidebar({ onToggleSettings, showSettings, onNavigate }: SidebarP
   const setCategoryFilter = useTasksStore((s) => s.setCategoryFilter);
   const setFilterStatus = useTasksStore((s) => s.setFilterStatus);
   const tasks = useTasksStore((s) => s.tasks);
+  const showArchive = useTasksStore((s) => s.showArchive);
+  const setShowArchive = useTasksStore((s) => s.setShowArchive);
+  const setArchivedTasks = useTasksStore((s) => s.setArchivedTasks);
+  const archivedCount = useTasksStore((s) => s.archivedTasks.length);
 
   const [showNewQueue, setShowNewQueue] = useState(false);
   const [newQueueName, setNewQueueName] = useState("");
@@ -45,16 +51,45 @@ export function Sidebar({ onToggleSettings, showSettings, onNavigate }: SidebarP
     if (activeQueueId) {
       setActiveQueueId(null);
     }
+    if (showArchive) setShowArchive(false);
     setFilterStatus("all");
     setCategoryFilter(cat);
+    onNavigate?.();
+  };
+
+  const handleArchiveClick = async () => {
+    if (!showArchive) {
+      try {
+        const archived = await invoke<any[]>("get_archived_tasks");
+        setArchivedTasks(
+          archived.map((t: any) => ({
+            id: t.id, url: t.url, filename: t.filename,
+            originalName: t.originalName, savePath: t.savePath,
+            status: t.status, totalBytes: t.totalBytes,
+            downloadedBytes: t.downloadedBytes, speedBps: 0, etaSeconds: 0,
+            queueId: t.queueId, priority: t.priority,
+            tags: JSON.parse(t.tags || "[]"), errorMessage: t.errorMessage,
+            isArchived: true, chunks: [],
+            createdAt: t.createdAt, updatedAt: t.updatedAt,
+          })),
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setShowArchive(!showArchive);
+    if (activeQueueId) setActiveQueueId(null);
+    setCategoryFilter("all");
+    setFilterStatus("all");
     onNavigate?.();
   };
 
   const handleCreateQueue = async () => {
     const name = newQueueName.trim();
     if (!name) return;
+    const defaultPath = useSettingsStore.getState().settings.defaultSavePath;
     try {
-      await createQueue(name, "");
+      await createQueue(name, defaultPath);
       setNewQueueName("");
       setShowNewQueue(false);
     } catch (e) {
@@ -187,6 +222,45 @@ export function Sidebar({ onToggleSettings, showSettings, onNavigate }: SidebarP
               </button>
             );
           })}
+        </div>
+
+        {/* Archive */}
+        <div className="mt-5">
+          <button
+            onClick={handleArchiveClick}
+            className="flex items-center gap-2 w-full rounded-lg px-3 py-1.5 text-left transition-colors duration-100"
+            style={{
+              backgroundColor: showArchive
+                ? "var(--surface-container-high)"
+                : "transparent",
+              color: showArchive
+                ? "var(--on-surface)"
+                : "var(--on-surface-variant)",
+            }}
+            onMouseEnter={(e) => {
+              if (!showArchive)
+                e.currentTarget.style.backgroundColor = "var(--surface-container)";
+            }}
+            onMouseLeave={(e) => {
+              if (!showArchive)
+                e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect x="1" y="3" width="22" height="5" />
+              <line x1="10" y1="12" x2="14" y2="12" />
+            </svg>
+            <span className="text-body-sm flex-1">Archive</span>
+            {archivedCount > 0 && (
+              <span
+                className="text-mono-sm"
+                style={{ opacity: 0.4, fontSize: "0.6rem" }}
+              >
+                {archivedCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 

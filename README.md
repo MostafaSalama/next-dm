@@ -2,6 +2,20 @@
 
 A high-performance desktop download manager built with **Tauri v2**, **React 19**, and **Rust**.
 
+## Screenshots
+
+| Downloads & Queues | Queue Actions |
+|---|---|
+| ![Downloads view showing queued and completed tasks](screenshots/queued-downloaded.png) | ![Queue context menu with actions like pause, rename, clear](screenshots/queue-actions.png) |
+
+| Task List & Bulk Actions | Archive |
+|---|---|
+| ![Main task list with status filters and bulk action bar](screenshots/queue-page.png) | ![Archive view with restore and delete options](screenshots/archive-items.png) |
+
+| Settings — General & Downloads | Settings — Appearance & Shortcuts |
+|---|---|
+| ![Settings page showing save folder, clipboard, and download options](screenshots/settings.png) | ![Theme switcher, speed limiter, and keyboard shortcuts](screenshots/settings2.png) |
+
 ## Features
 
 - **Chunked / multi-part downloads** with resume support via HTTP Range requests
@@ -13,9 +27,11 @@ A high-performance desktop download manager built with **Tauri v2**, **React 19*
 - **Category filtering** — video, audio, documents, archives, images, programs
 - **Status filtering** — downloading, completed, queued, paused, errored
 - **Drag-and-drop queue reordering**
+- **Archive** — move old downloads out of the main view, restore or delete later
 - **Dark / Light / Custom themes** with CSS-variable-based theming
 - **Settings persistence** in SQLite
 - **Open folder** for completed downloads
+- **Unicode support** — proper display of Arabic, CJK, and other non-Latin filenames
 
 ## Tech Stack
 

@@ -18,75 +18,81 @@ pub struct TaskRow {
     pub config: String,
     pub error_message: Option<String>,
     pub retry_count: i64,
+    pub is_archived: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
 pub fn insert_task(conn: &Connection, task: &TaskRow) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO tasks (id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        "INSERT INTO tasks (id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, is_archived, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             task.id, task.url, task.filename, task.original_name, task.save_path,
             task.status, task.total_bytes, task.downloaded_bytes, task.queue_id,
             task.priority, task.tags, task.config, task.error_message,
-            task.retry_count, task.created_at, task.updated_at,
+            task.retry_count, task.is_archived as i64, task.created_at, task.updated_at,
         ],
     )?;
     Ok(())
 }
 
+fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<TaskRow> {
+    Ok(TaskRow {
+        id: row.get(0)?,
+        url: row.get(1)?,
+        filename: row.get(2)?,
+        original_name: row.get(3)?,
+        save_path: row.get(4)?,
+        status: row.get(5)?,
+        total_bytes: row.get(6)?,
+        downloaded_bytes: row.get(7)?,
+        queue_id: row.get(8)?,
+        priority: row.get(9)?,
+        tags: row.get(10)?,
+        config: row.get(11)?,
+        error_message: row.get(12)?,
+        retry_count: row.get(13)?,
+        is_archived: row.get::<_, i64>(14)? != 0,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
+    })
+}
+
+const TASK_COLS: &str = "id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, is_archived, created_at, updated_at";
+
 pub fn get_all_tasks(conn: &Connection) -> Result<Vec<TaskRow>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, created_at, updated_at FROM tasks ORDER BY created_at DESC"
+        &format!("SELECT {TASK_COLS} FROM tasks WHERE is_archived = 0 ORDER BY created_at DESC")
     )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(TaskRow {
-            id: row.get(0)?,
-            url: row.get(1)?,
-            filename: row.get(2)?,
-            original_name: row.get(3)?,
-            save_path: row.get(4)?,
-            status: row.get(5)?,
-            total_bytes: row.get(6)?,
-            downloaded_bytes: row.get(7)?,
-            queue_id: row.get(8)?,
-            priority: row.get(9)?,
-            tags: row.get(10)?,
-            config: row.get(11)?,
-            error_message: row.get(12)?,
-            retry_count: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-        })
-    })?;
+    let rows = stmt.query_map([], |row| row_to_task(row))?;
     rows.collect()
+}
+
+pub fn get_archived_tasks(conn: &Connection) -> Result<Vec<TaskRow>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {TASK_COLS} FROM tasks WHERE is_archived = 1 ORDER BY updated_at DESC")
+    )?;
+    let rows = stmt.query_map([], |row| row_to_task(row))?;
+    rows.collect()
+}
+
+pub fn set_tasks_archived(conn: &Connection, ids: &[String], archived: bool) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    for id in ids {
+        tx.execute(
+            "UPDATE tasks SET is_archived = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![archived as i64, id],
+        )?;
+    }
+    tx.commit()
 }
 
 pub fn get_queued_tasks(conn: &Connection, limit: usize) -> Result<Vec<TaskRow>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, created_at, updated_at FROM tasks WHERE status = 'queued' ORDER BY priority ASC, created_at ASC LIMIT ?1"
+        &format!("SELECT {TASK_COLS} FROM tasks WHERE status = 'queued' AND is_archived = 0 ORDER BY priority ASC, created_at ASC LIMIT ?1")
     )?;
-    let rows = stmt.query_map(params![limit as i64], |row| {
-        Ok(TaskRow {
-            id: row.get(0)?,
-            url: row.get(1)?,
-            filename: row.get(2)?,
-            original_name: row.get(3)?,
-            save_path: row.get(4)?,
-            status: row.get(5)?,
-            total_bytes: row.get(6)?,
-            downloaded_bytes: row.get(7)?,
-            queue_id: row.get(8)?,
-            priority: row.get(9)?,
-            tags: row.get(10)?,
-            config: row.get(11)?,
-            error_message: row.get(12)?,
-            retry_count: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![limit as i64], |row| row_to_task(row))?;
     rows.collect()
 }
 
@@ -127,29 +133,39 @@ pub fn get_queued_tasks_for_queue(
     limit: usize,
 ) -> Result<Vec<TaskRow>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, url, filename, original_name, save_path, status, total_bytes, downloaded_bytes, queue_id, priority, tags, config, error_message, retry_count, created_at, updated_at FROM tasks WHERE status = 'queued' AND queue_id = ?1 ORDER BY priority ASC, created_at ASC LIMIT ?2"
+        &format!("SELECT {TASK_COLS} FROM tasks WHERE status = 'queued' AND is_archived = 0 AND queue_id = ?1 ORDER BY priority ASC, created_at ASC LIMIT ?2")
     )?;
-    let rows = stmt.query_map(params![queue_id, limit as i64], |row| {
-        Ok(TaskRow {
-            id: row.get(0)?,
-            url: row.get(1)?,
-            filename: row.get(2)?,
-            original_name: row.get(3)?,
-            save_path: row.get(4)?,
-            status: row.get(5)?,
-            total_bytes: row.get(6)?,
-            downloaded_bytes: row.get(7)?,
-            queue_id: row.get(8)?,
-            priority: row.get(9)?,
-            tags: row.get(10)?,
-            config: row.get(11)?,
-            error_message: row.get(12)?,
-            retry_count: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![queue_id, limit as i64], |row| row_to_task(row))?;
     rows.collect()
+}
+
+pub fn clear_queue_tasks(
+    conn: &Connection,
+    queue_id: &str,
+    completed_only: bool,
+) -> Result<Vec<String>, rusqlite::Error> {
+    let condition = if completed_only {
+        "queue_id = ?1 AND status = 'completed'"
+    } else {
+        "queue_id = ?1 AND status IN ('completed', 'error', 'queued', 'paused')"
+    };
+
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id FROM tasks WHERE {condition}"
+    ))?;
+    let ids: Vec<String> = stmt
+        .query_map(params![queue_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for id in &ids {
+        conn.execute("DELETE FROM chunks WHERE task_id = ?1", params![id])?;
+    }
+    conn.execute(
+        &format!("DELETE FROM tasks WHERE {condition}"),
+        params![queue_id],
+    )?;
+    Ok(ids)
 }
 
 pub fn move_tasks_to_queue(

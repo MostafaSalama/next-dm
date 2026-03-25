@@ -1,4 +1,4 @@
-use crate::db::{queues, tasks};
+use crate::db::{queues, settings, tasks};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -15,10 +15,25 @@ pub async fn create_queue(
         })
         .map_err(|e| e.to_string())?;
 
+    let effective_path = if save_path.is_empty() {
+        settings::get_setting(&conn, "default_save_path")
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty() && s != "\"\"")
+            .unwrap_or_else(|| {
+                dirs_next::download_dir()
+                    .unwrap_or_else(|| std::env::temp_dir())
+                    .to_string_lossy()
+                    .to_string()
+            })
+    } else {
+        save_path
+    };
+
     let queue = queues::QueueRow {
         id: id.clone(),
         name,
-        save_path,
+        save_path: effective_path,
         max_concurrent: 0,
         speed_limit: 0,
         sort_order: max_sort + 1,
@@ -94,4 +109,20 @@ pub async fn set_queue_paused(
 ) -> Result<(), String> {
     let conn = state.db.conn();
     queues::set_queue_paused(&conn, &id, paused).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_queue(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    completed_only: bool,
+) -> Result<Vec<String>, String> {
+    let ids = {
+        let conn = state.db.conn();
+        tasks::clear_queue_tasks(&conn, &id, completed_only).map_err(|e| e.to_string())?
+    };
+    if !completed_only {
+        state.engine.pool.cancel_tasks(&ids).await;
+    }
+    Ok(ids)
 }

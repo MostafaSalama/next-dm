@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import { useQueuesStore } from "./queuesStore";
 
 export type TaskStatus =
@@ -31,6 +32,7 @@ export interface Task {
   priority: number;
   tags: string[];
   errorMessage: string | null;
+  isArchived: boolean;
   chunks: ChunkProgress[];
   createdAt: string;
   updatedAt: string;
@@ -71,6 +73,8 @@ export function getFileCategory(filename: string): CategoryFilter {
 
 interface TasksState {
   tasks: Task[];
+  archivedTasks: Task[];
+  showArchive: boolean;
   selectedIds: Set<string>;
   filterStatus: TaskStatus | "all";
   searchQuery: string;
@@ -87,10 +91,16 @@ interface TasksState {
   selectAll: () => void;
   clearSelection: () => void;
   filteredTasks: () => Task[];
+  setShowArchive: (show: boolean) => void;
+  setArchivedTasks: (tasks: Task[]) => void;
+  archiveTasks: (ids: string[]) => Promise<void>;
+  unarchiveTasks: (ids: string[]) => Promise<void>;
 }
 
 export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
+  archivedTasks: [],
+  showArchive: false,
   selectedIds: new Set(),
   filterStatus: "all",
   searchQuery: "",
@@ -140,6 +150,33 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     })),
 
   clearSelection: () => set({ selectedIds: new Set() }),
+
+  setShowArchive: (show) => set({ showArchive: show }),
+  setArchivedTasks: (archivedTasks) => set({ archivedTasks }),
+
+  archiveTasks: async (ids) => {
+    await invoke("archive_tasks", { ids });
+    set((state) => {
+      const toArchive = state.tasks.filter((t) => ids.includes(t.id));
+      return {
+        tasks: state.tasks.filter((t) => !ids.includes(t.id)),
+        archivedTasks: [...toArchive.map((t) => ({ ...t, isArchived: true })), ...state.archivedTasks],
+        selectedIds: new Set([...state.selectedIds].filter((sid) => !ids.includes(sid))),
+      };
+    });
+  },
+
+  unarchiveTasks: async (ids) => {
+    await invoke("unarchive_tasks", { ids });
+    set((state) => {
+      const toRestore = state.archivedTasks.filter((t) => ids.includes(t.id));
+      return {
+        archivedTasks: state.archivedTasks.filter((t) => !ids.includes(t.id)),
+        tasks: [...state.tasks, ...toRestore.map((t) => ({ ...t, isArchived: false }))],
+        selectedIds: new Set([...state.selectedIds].filter((sid) => !ids.includes(sid))),
+      };
+    });
+  },
 
   filteredTasks: () => {
     const { tasks, filterStatus, searchQuery, categoryFilter } = get();
