@@ -6,11 +6,13 @@ import { TaskStage } from "./components/layout/TaskStage";
 import { ArchiveView } from "./components/layout/ArchiveView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { PreFlightModal } from "./components/modals/PreFlightModal";
+import { VideoPreFlightModal } from "./components/modals/VideoPreFlightModal";
 import { ClipboardToast } from "./components/notifications/ClipboardToast";
 import { useDownloadEvents } from "./hooks/useDownloadEvents";
 import { useTasksStore, type Task } from "./stores/tasksStore";
 import { useQueuesStore, type Queue } from "./stores/queuesStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { detectPlatform } from "./lib/platformDetect";
 
 export function App() {
   const setTasks = useTasksStore((s) => s.setTasks);
@@ -21,6 +23,8 @@ export function App() {
 
   const [preFlightOpen, setPreFlightOpen] = useState(false);
   const [preFlightUrls, setPreFlightUrls] = useState<string[]>([]);
+  const [videoPreFlightOpen, setVideoPreFlightOpen] = useState(false);
+  const [videoPreFlightUrls, setVideoPreFlightUrls] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
 
   useDownloadEvents();
@@ -38,13 +42,31 @@ export function App() {
   }, [setTasks, setQueues, loadSettings]);
 
   const openPreFlight = useCallback((urls: string[]) => {
-    setPreFlightUrls(urls);
-    setPreFlightOpen(true);
+    const videoUrls = urls.filter((u) => detectPlatform(u).isVideo);
+    const fileUrls = urls.filter((u) => !detectPlatform(u).isVideo);
+
+    if (videoUrls.length > 0 && fileUrls.length === 0) {
+      setVideoPreFlightUrls(videoUrls);
+      setVideoPreFlightOpen(true);
+    } else if (fileUrls.length > 0 && videoUrls.length === 0) {
+      setPreFlightUrls(fileUrls);
+      setPreFlightOpen(true);
+    } else if (videoUrls.length > 0 && fileUrls.length > 0) {
+      setPreFlightUrls(fileUrls);
+      setPreFlightOpen(true);
+      setVideoPreFlightUrls(videoUrls);
+      setVideoPreFlightOpen(true);
+    }
   }, []);
 
   const closePreFlight = useCallback(() => {
     setPreFlightOpen(false);
     setPreFlightUrls([]);
+  }, []);
+
+  const closeVideoPreFlight = useCallback(() => {
+    setVideoPreFlightOpen(false);
+    setVideoPreFlightUrls([]);
   }, []);
 
   const toggleSettings = useCallback(() => {
@@ -116,6 +138,10 @@ export function App() {
         <PreFlightModal urls={preFlightUrls} onClose={closePreFlight} />
       )}
 
+      {videoPreFlightOpen && (
+        <VideoPreFlightModal urls={videoPreFlightUrls} onClose={closeVideoPreFlight} />
+      )}
+
       <ClipboardToast onAddToQueue={openPreFlight} />
     </div>
   );
@@ -151,6 +177,24 @@ interface TaskFromBackend {
 }
 
 function mapBackendTask(t: TaskFromBackend): Task {
+  let videoMeta: Task["videoMeta"] = undefined;
+  try {
+    const cfg = JSON.parse(t.config || "{}");
+    if (cfg.task_type === "video") {
+      videoMeta = {
+        taskType: "video",
+        platform: cfg.platform || "unknown",
+        videoId: cfg.video_id,
+        thumbnail: cfg.thumbnail,
+        duration: cfg.duration,
+        resolution: cfg.resolution,
+        formatId: cfg.format_id,
+        outputFormat: cfg.output_format,
+        playlistTitle: cfg.playlist_title,
+      };
+    }
+  } catch { /* non-JSON config is fine */ }
+
   return {
     id: t.id,
     url: t.url,
@@ -174,5 +218,6 @@ function mapBackendTask(t: TaskFromBackend): Task {
     })),
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
+    videoMeta,
   };
 }

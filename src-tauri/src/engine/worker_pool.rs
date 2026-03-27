@@ -1,9 +1,10 @@
 use crate::db::chunks::{self, ChunkRow};
-use crate::db::{queues, tasks};
+use crate::db::{queues, settings, tasks};
 use crate::db::Database;
 use crate::engine::chunk_manager::{self, ChunkHandle};
 use crate::engine::governor::SpeedGovernor;
 use crate::engine::stitcher;
+use crate::engine::video_downloader::{self, VideoDownloadConfig};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -108,23 +109,46 @@ impl WorkerPool {
                     let _ = tasks::update_task_status(&conn, &task.id, "downloading", None);
                 }
 
+                let config: serde_json::Value =
+                    serde_json::from_str(&task.config).unwrap_or_default();
+                let task_type = config
+                    .get("task_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("file")
+                    .to_string();
+
+                let cancel_token = CancellationToken::new();
+
                 let task_chunks = {
                     let conn = self.db.conn();
                     chunks::get_chunks_for_task(&conn, &task.id).unwrap_or_default()
                 };
 
-                let cancel_token = CancellationToken::new();
-                let mut chunk_handles = Vec::new();
-
-                for chunk in &task_chunks {
-                    let counter = Arc::new(AtomicU64::new(chunk.downloaded_bytes as u64));
-                    chunk_handles.push(ChunkHandle {
-                        chunk_id: chunk.id.clone(),
-                        chunk_index: chunk.chunk_index,
-                        downloaded: counter,
-                        total: (chunk.end_byte - chunk.start_byte + 1) as u64,
-                    });
-                }
+                let chunk_handles = if task_type == "video" {
+                    let total = if task.total_bytes > 0 {
+                        task.total_bytes as u64
+                    } else {
+                        1
+                    };
+                    vec![ChunkHandle {
+                        chunk_id: format!("{}-video", task.id),
+                        chunk_index: 0,
+                        downloaded: Arc::new(AtomicU64::new(0)),
+                        total,
+                    }]
+                } else {
+                    let mut handles = Vec::new();
+                    for chunk in &task_chunks {
+                        let counter = Arc::new(AtomicU64::new(chunk.downloaded_bytes as u64));
+                        handles.push(ChunkHandle {
+                            chunk_id: chunk.id.clone(),
+                            chunk_index: chunk.chunk_index,
+                            downloaded: counter,
+                            total: (chunk.end_byte - chunk.start_byte + 1) as u64,
+                        });
+                    }
+                    handles
+                };
 
                 {
                     let mut active = self.active_tasks.lock().await;
@@ -143,21 +167,31 @@ impl WorkerPool {
                 let app_handle = self.app_handle.clone();
                 let governor = self.governor.clone();
                 let supports_range = task.total_bytes > 0 && task_chunks.len() > 1;
-                let config: serde_json::Value =
-                    serde_json::from_str(&task.config).unwrap_or_default();
 
                 tokio::spawn(async move {
-                    let result = Self::run_task(
-                        &db,
-                        &task,
-                        task_chunks,
-                        supports_range,
-                        cancel_token.clone(),
-                        &active_tasks,
-                        &config,
-                        &governor,
-                    )
-                    .await;
+                    let result = if task_type == "video" {
+                        Self::run_video_task(
+                            &db,
+                            &task,
+                            cancel_token.clone(),
+                            &config,
+                            &app_handle,
+                            &active_tasks,
+                        )
+                        .await
+                    } else {
+                        Self::run_task(
+                            &db,
+                            &task,
+                            task_chunks,
+                            supports_range,
+                            cancel_token.clone(),
+                            &active_tasks,
+                            &config,
+                            &governor,
+                        )
+                        .await
+                    };
 
                     match result {
                         Ok(()) => {
@@ -275,6 +309,129 @@ impl WorkerPool {
         stitcher::cleanup_parts(&chunk_paths, Some(&parts_dir.to_string_lossy())).await;
 
         // Update total downloaded in DB
+        {
+            let conn = db.conn();
+            let _ = tasks::update_task_progress(&conn, &task.id, task.total_bytes);
+        }
+
+        Ok(())
+    }
+
+    async fn run_video_task(
+        db: &Database,
+        task: &tasks::TaskRow,
+        cancel_token: CancellationToken,
+        config: &serde_json::Value,
+        _app_handle: &tauri::AppHandle,
+        active_tasks: &Arc<Mutex<HashMap<String, ActiveTask>>>,
+    ) -> Result<(), String> {
+        let (ytdlp_path, ffmpeg_path) = {
+            let conn = db.conn();
+            let yp = settings::get_setting(&conn, "ytdlp_path")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let fp = settings::get_setting(&conn, "ffmpeg_path")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+            let app_data_dir = dirs_next::data_dir()
+                .unwrap_or_else(|| std::env::temp_dir())
+                .join("com.nextdm.desktop");
+            let bin_dir = app_data_dir.join("bin");
+
+            let ytdlp = if !yp.is_empty() && PathBuf::from(&yp).exists() {
+                PathBuf::from(&yp)
+            } else if cfg!(target_os = "windows") {
+                bin_dir.join("yt-dlp.exe")
+            } else {
+                bin_dir.join("yt-dlp")
+            };
+
+            let ffmpeg = if !fp.is_empty() && PathBuf::from(&fp).exists() {
+                PathBuf::from(&fp)
+            } else if cfg!(target_os = "windows") {
+                bin_dir.join("ffmpeg.exe")
+            } else {
+                bin_dir.join("ffmpeg")
+            };
+
+            (ytdlp, ffmpeg)
+        };
+
+        if !ytdlp_path.exists() {
+            return Err("yt-dlp is not installed. Please download it from Settings > Video Downloads.".to_string());
+        }
+
+        let format_id = config
+            .get("format_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("bestvideo+bestaudio/best")
+            .to_string();
+        let output_format = config
+            .get("output_format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("mp4")
+            .to_string();
+        let subtitles: Vec<String> = config
+            .get("subtitles")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let embed_subs = config
+            .get("embed_subs")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let embed_thumbnail = config
+            .get("embed_thumbnail")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let dl_config = VideoDownloadConfig {
+            format_id,
+            output_format,
+            subtitles,
+            embed_subs,
+            embed_thumbnail,
+        };
+
+        let task_id = task.id.clone();
+        let active_ref = active_tasks.clone();
+
+        video_downloader::run_video_download(
+            &ytdlp_path,
+            &ffmpeg_path,
+            &task.url,
+            &dl_config,
+            &PathBuf::from(&task.save_path),
+            &task.filename,
+            cancel_token,
+            move |progress| {
+                let active_ref_inner = active_ref.clone();
+                let task_id_inner = task_id.clone();
+                let downloaded = progress.downloaded_bytes;
+                let total = progress.total_bytes;
+
+                tokio::spawn(async move {
+                    let active = active_ref_inner.lock().await;
+                    if let Some(at) = active.get(&task_id_inner) {
+                        if let Some(handle) = at.chunk_handles.first() {
+                            handle.downloaded.store(downloaded, Ordering::Relaxed);
+                            if total > 0 {
+                                // dynamically update total if we now know it
+                            }
+                        }
+                    }
+                });
+            },
+        )
+        .await?;
+
         {
             let conn = db.conn();
             let _ = tasks::update_task_progress(&conn, &task.id, task.total_bytes);

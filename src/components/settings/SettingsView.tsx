@@ -1,3 +1,6 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { FolderPicker } from "../shared/FolderPicker";
 import { SpeedLimiter } from "./SpeedLimiter";
@@ -218,6 +221,17 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* Video Downloads */}
+        <section>
+          <SectionHeader title="Video Downloads" />
+          <div
+            className="rounded-xl p-4 flex flex-col"
+            style={{ backgroundColor: "var(--surface-container-low)" }}
+          >
+            <BinaryManagerSection />
+          </div>
+        </section>
+
         {/* Speed */}
         <section>
           <SectionHeader title="Speed" />
@@ -359,6 +373,217 @@ function ShortcutRow({ keys, description }: { keys: string[]; description: strin
             </kbd>
           </span>
         ))}
+      </div>
+    </div>
+  );
+}
+
+interface BinaryInfo {
+  available: boolean;
+  version: string;
+  path: string;
+}
+
+interface BinariesStatus {
+  ytdlp: BinaryInfo;
+  ffmpeg: BinaryInfo;
+}
+
+function BinaryManagerSection() {
+  const [status, setStatus] = useState<BinariesStatus | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const s = await invoke<BinariesStatus>("check_binaries");
+      setStatus(s);
+    } catch (e) {
+      console.error("Failed to check binaries:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+    const unlisten = listen<{ binary: string; downloaded: number; total: number; done?: boolean }>(
+      "binary_download_progress",
+      (event) => {
+        const { downloaded, total, done } = event.payload;
+        if (done) {
+          setDownloading(null);
+          setProgress(0);
+          checkStatus();
+        } else if (total > 0) {
+          setProgress(Math.round((downloaded / total) * 100));
+        }
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [checkStatus]);
+
+  const handleDownload = async (which: string) => {
+    setDownloading(which);
+    setProgress(0);
+    try {
+      await invoke("download_binary", { which });
+    } catch (e) {
+      console.error(`Failed to download ${which}:`, e);
+    } finally {
+      setDownloading(null);
+      setProgress(0);
+      checkStatus();
+    }
+  };
+
+  const handleUpdate = async () => {
+    setDownloading("ytdlp");
+    setProgress(0);
+    try {
+      await invoke("update_ytdlp");
+    } catch (e) {
+      console.error("Failed to update yt-dlp:", e);
+    } finally {
+      setDownloading(null);
+      setProgress(0);
+      checkStatus();
+    }
+  };
+
+  if (!status) {
+    return (
+      <span className="text-body-sm" style={{ color: "var(--on-surface-variant)" }}>
+        Checking binaries...
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <BinaryRow
+        name="yt-dlp"
+        info={status.ytdlp}
+        downloading={downloading === "ytdlp"}
+        progress={progress}
+        onDownload={() => handleDownload("ytdlp")}
+        onUpdate={status.ytdlp.available ? handleUpdate : undefined}
+      />
+      <BinaryRow
+        name="FFmpeg"
+        info={status.ffmpeg}
+        downloading={downloading === "ffmpeg"}
+        progress={progress}
+        onDownload={() => handleDownload("ffmpeg")}
+      />
+      <span
+        className="text-body-sm"
+        style={{ color: "var(--on-surface-variant)", fontSize: "0.6rem" }}
+      >
+        Required for downloading videos from YouTube, Facebook, and 1800+ platforms.
+        yt-dlp extracts and downloads video streams; FFmpeg merges audio and video.
+      </span>
+    </div>
+  );
+}
+
+function BinaryRow({
+  name,
+  info,
+  downloading,
+  progress,
+  onDownload,
+  onUpdate,
+}: {
+  name: string;
+  info: BinaryInfo;
+  downloading: boolean;
+  progress: number;
+  onDownload: () => void;
+  onUpdate?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-body-sm font-medium" style={{ color: "var(--on-surface)" }}>
+            {name}
+          </span>
+          <span
+            className="px-1.5 py-0.5 rounded text-label-sm"
+            style={{
+              fontSize: "0.55rem",
+              backgroundColor: info.available
+                ? "color-mix(in srgb, var(--primary-fixed-dim) 15%, transparent)"
+                : "color-mix(in srgb, var(--error) 15%, transparent)",
+              color: info.available ? "var(--primary-fixed-dim)" : "var(--error)",
+            }}
+          >
+            {info.available ? "Installed" : "Not installed"}
+          </span>
+        </div>
+        {info.available && (
+          <span
+            className="text-mono-sm truncate"
+            style={{ color: "var(--on-surface-variant)", fontSize: "0.6rem" }}
+          >
+            {info.version}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {downloading && (
+          <div className="flex items-center gap-2">
+            <div
+              className="rounded-full overflow-hidden"
+              style={{
+                width: 60,
+                height: 4,
+                backgroundColor: "var(--surface-container)",
+              }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-200"
+                style={{
+                  width: `${progress}%`,
+                  backgroundColor: "var(--primary-fixed-dim)",
+                }}
+              />
+            </div>
+            <span
+              className="text-mono-sm"
+              style={{ color: "var(--on-surface-variant)", fontSize: "0.6rem" }}
+            >
+              {progress}%
+            </span>
+          </div>
+        )}
+        {!downloading && !info.available && (
+          <button
+            onClick={onDownload}
+            className="rounded-lg px-3 py-1.5 text-body-sm transition-colors duration-100"
+            style={{
+              backgroundColor: "var(--primary-fixed)",
+              color: "var(--on-primary)",
+              fontSize: "0.7rem",
+            }}
+          >
+            Download
+          </button>
+        )}
+        {!downloading && info.available && onUpdate && (
+          <button
+            onClick={onUpdate}
+            className="rounded-lg px-3 py-1.5 text-body-sm transition-colors duration-100"
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--primary-fixed-dim) 15%, transparent)",
+              color: "var(--primary-fixed-dim)",
+              fontSize: "0.7rem",
+            }}
+          >
+            Update
+          </button>
+        )}
       </div>
     </div>
   );

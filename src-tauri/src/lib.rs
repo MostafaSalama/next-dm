@@ -6,6 +6,7 @@ mod state;
 
 use db::Database;
 use engine::DownloadEngine;
+use services::binary_manager::BinaryManager;
 use state::AppState;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -60,7 +61,7 @@ pub fn run() {
                 .expect("failed to resolve app data dir");
 
             let database =
-                Database::init(app_data_dir).expect("failed to initialize database");
+                Database::init(app_data_dir.clone()).expect("failed to initialize database");
 
             // Read settings from DB
             let (max_concurrent, global_speed_limit) = {
@@ -87,10 +88,14 @@ pub fn run() {
             let clipboard_handle = app.handle().clone();
             services::clipboard::start_clipboard_monitor(clipboard_handle, database.clone());
 
+            // Binary manager
+            let binary_manager = BinaryManager::new(&app_data_dir);
+
             // Shared state
             app.manage(AppState {
                 db: database,
                 engine,
+                binary_manager,
             });
 
             // Reset any tasks stuck as "downloading" from a previous crash
@@ -127,6 +132,11 @@ pub fn run() {
             commands::queues::clear_queue,
             commands::settings::get_all_settings,
             commands::settings::update_setting,
+            commands::video::check_binaries,
+            commands::video::download_binary,
+            commands::video::update_ytdlp,
+            commands::video::video_extract_info,
+            commands::video::video_extract_playlist,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

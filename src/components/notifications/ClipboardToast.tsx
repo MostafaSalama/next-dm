@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useQueuesStore } from "../../stores/queuesStore";
 import { useTasksStore, type Task } from "../../stores/tasksStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { detectPlatform, getPlatformLabel } from "../../lib/platformDetect";
 
 const MAX_VISIBLE = 3;
 const AUTO_DISMISS_MS = 8000;
@@ -14,6 +15,8 @@ interface ToastData {
   filename: string | null;
   size: number;
   createdAt: number;
+  isVideo: boolean;
+  platform: string | null;
 }
 
 interface FileInfo {
@@ -87,12 +90,15 @@ export function ClipboardToast({ onAddToQueue }: ClipboardToastProps) {
 
       toastIdRef.current += 1;
       const id = `toast-${toastIdRef.current}`;
+      const platformInfo = detectPlatform(url);
       const toast: ToastData = {
         id,
         url,
         filename: null,
         size: 0,
         createdAt: Date.now(),
+        isVideo: platformInfo.isVideo,
+        platform: platformInfo.platform,
       };
       setToasts((prev) => [toast, ...prev]);
 
@@ -212,7 +218,11 @@ export function ClipboardToast({ onAddToQueue }: ClipboardToastProps) {
           toast={toast}
           onDismiss={() => dismiss(toast.id)}
           onAddToQueue={() => handleAddToQueue(toast)}
-          onDownloadNow={() => handleDownloadNow(toast)}
+          onDownloadNow={() =>
+            toast.isVideo
+              ? handleAddToQueue(toast)
+              : handleDownloadNow(toast)
+          }
         />
       ))}
       {hiddenCount > 0 && (
@@ -280,12 +290,26 @@ function ToastCard({
           </svg>
         </button>
 
-        {/* URL */}
-        <div
-          className="text-mono-sm truncate pr-5"
-          style={{ color: "var(--on-surface)", fontSize: "0.65rem" }}
-        >
-          {truncatedUrl}
+        {/* URL + platform badge */}
+        <div className="flex items-center gap-1.5 pr-5">
+          {toast.isVideo && toast.platform && (
+            <span
+              className="flex-shrink-0 px-1.5 py-0.5 rounded text-label-sm"
+              style={{
+                fontSize: "0.55rem",
+                backgroundColor: "color-mix(in srgb, var(--primary-fixed-dim) 20%, transparent)",
+                color: "var(--primary-fixed-dim)",
+              }}
+            >
+              {getPlatformLabel(toast.platform)}
+            </span>
+          )}
+          <span
+            className="text-mono-sm truncate"
+            style={{ color: "var(--on-surface)", fontSize: "0.65rem" }}
+          >
+            {truncatedUrl}
+          </span>
         </div>
 
         {/* Filename + size */}
@@ -343,7 +367,7 @@ function ToastCard({
               (e.currentTarget.style.backgroundColor = "var(--primary-fixed)")
             }
           >
-            Download Now
+            {toast.isVideo ? "Download Video" : "Download Now"}
           </button>
         </div>
       </div>

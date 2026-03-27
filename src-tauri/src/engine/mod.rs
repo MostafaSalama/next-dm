@@ -1,6 +1,7 @@
 pub mod chunk_manager;
 pub mod governor;
 pub mod stitcher;
+pub mod video_downloader;
 pub mod worker_pool;
 
 use crate::db::Database;

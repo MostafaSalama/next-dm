@@ -4,6 +4,7 @@ import type { Task } from "../../stores/tasksStore";
 import { useTasksStore } from "../../stores/tasksStore";
 import { FileIcon } from "../../lib/fileIcons";
 import { formatBytes, formatSpeed, formatEta } from "../../lib/formatters";
+import { formatDuration, getPlatformLabel } from "../../lib/platformDetect";
 
 interface TaskRowProps {
   task: Task;
@@ -105,17 +106,69 @@ export const TaskRow = memo(function TaskRow({ task, style }: TaskRowProps) {
           )}
         </button>
 
-        {/* File icon */}
-        <FileIcon filename={task.filename} />
+        {/* File icon or video thumbnail */}
+        {task.videoMeta?.thumbnail ? (
+          <div className="relative flex-shrink-0 rounded-md overflow-hidden" style={{ width: 40, height: 28 }}>
+            <img
+              src={task.videoMeta.thumbnail}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => (e.currentTarget.style.display = "none")}
+            />
+            {task.videoMeta.duration && task.videoMeta.duration > 0 && (
+              <span
+                className="absolute bottom-0 right-0 text-mono-sm px-0.5 rounded-tl"
+                style={{
+                  fontSize: "0.5rem",
+                  backgroundColor: "rgba(0,0,0,0.75)",
+                  color: "#fff",
+                  lineHeight: 1.3,
+                }}
+              >
+                {formatDuration(task.videoMeta.duration)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <FileIcon filename={task.filename} />
+        )}
 
-        {/* Filename + URL */}
+        {/* Filename + URL + video meta */}
         <div className="flex flex-col flex-1 min-w-0">
-          <span
-            className="text-body-md truncate"
-            style={{ color: "var(--on-surface)" }}
-          >
-            {task.filename}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className="text-body-md truncate"
+              style={{ color: "var(--on-surface)" }}
+            >
+              {task.filename}
+            </span>
+            {task.videoMeta && (
+              <>
+                {task.videoMeta.resolution && (
+                  <span
+                    className="flex-shrink-0 px-1 rounded text-label-sm"
+                    style={{
+                      fontSize: "0.5rem",
+                      backgroundColor: "color-mix(in srgb, var(--primary-fixed-dim) 15%, transparent)",
+                      color: "var(--primary-fixed-dim)",
+                    }}
+                  >
+                    {task.videoMeta.resolution}
+                  </span>
+                )}
+                <span
+                  className="flex-shrink-0 px-1 rounded text-label-sm"
+                  style={{
+                    fontSize: "0.5rem",
+                    backgroundColor: "color-mix(in srgb, var(--secondary) 12%, transparent)",
+                    color: "var(--secondary)",
+                  }}
+                >
+                  {getPlatformLabel(task.videoMeta.platform)}
+                </span>
+              </>
+            )}
+          </div>
           <span
             className="text-mono-sm truncate mt-0.5"
             style={{ color: "var(--on-surface-variant)", opacity: 0.5 }}

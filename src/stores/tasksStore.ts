@@ -17,6 +17,18 @@ export interface ChunkProgress {
   totalBytes: number;
 }
 
+export interface VideoMeta {
+  taskType: "video";
+  platform: string;
+  videoId?: string;
+  thumbnail?: string;
+  duration?: number;
+  resolution?: string;
+  formatId?: string;
+  outputFormat?: string;
+  playlistTitle?: string;
+}
+
 export interface Task {
   id: string;
   url: string;
@@ -36,6 +48,7 @@ export interface Task {
   chunks: ChunkProgress[];
   createdAt: string;
   updatedAt: string;
+  videoMeta?: VideoMeta;
 }
 
 export type CategoryFilter =
