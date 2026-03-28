@@ -13,7 +13,7 @@ pub struct ChunkHandle {
     pub chunk_id: String,
     pub chunk_index: i64,
     pub downloaded: Arc<AtomicU64>,
-    pub total: u64,
+    pub total: Arc<AtomicU64>,
 }
 
 pub struct DownloadResult {

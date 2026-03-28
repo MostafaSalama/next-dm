@@ -48,12 +48,13 @@ pub fn start_event_emitter(app_handle: tauri::AppHandle, pool: Arc<WorkerPool>) 
 
                 for handle in &task.chunk_handles {
                     let dl = handle.downloaded.load(Ordering::Relaxed);
+                    let chunk_total = handle.total.load(Ordering::Relaxed);
                     total_downloaded += dl;
-                    total_size += handle.total;
+                    total_size += chunk_total;
                     chunk_payloads.push(ChunkProgressPayload {
                         index: handle.chunk_index,
                         downloaded_bytes: dl,
-                        total_bytes: handle.total,
+                        total_bytes: chunk_total,
                     });
                 }
 

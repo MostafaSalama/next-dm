@@ -128,13 +128,13 @@ impl WorkerPool {
                     let total = if task.total_bytes > 0 {
                         task.total_bytes as u64
                     } else {
-                        1
+                        0
                     };
                     vec![ChunkHandle {
                         chunk_id: format!("{}-video", task.id),
                         chunk_index: 0,
                         downloaded: Arc::new(AtomicU64::new(0)),
-                        total,
+                        total: Arc::new(AtomicU64::new(total)),
                     }]
                 } else {
                     let mut handles = Vec::new();
@@ -144,7 +144,7 @@ impl WorkerPool {
                             chunk_id: chunk.id.clone(),
                             chunk_index: chunk.chunk_index,
                             downloaded: counter,
-                            total: (chunk.end_byte - chunk.start_byte + 1) as u64,
+                            total: Arc::new(AtomicU64::new((chunk.end_byte - chunk.start_byte + 1) as u64)),
                         });
                     }
                     handles
@@ -403,6 +403,9 @@ impl WorkerPool {
         let task_id = task.id.clone();
         let active_ref = active_tasks.clone();
 
+        let active_tasks_final = active_tasks.clone();
+        let task_id_final = task.id.clone();
+
         video_downloader::run_video_download(
             &ytdlp_path,
             &ffmpeg_path,
@@ -423,7 +426,7 @@ impl WorkerPool {
                         if let Some(handle) = at.chunk_handles.first() {
                             handle.downloaded.store(downloaded, Ordering::Relaxed);
                             if total > 0 {
-                                // dynamically update total if we now know it
+                                handle.total.store(total, Ordering::Relaxed);
                             }
                         }
                     }
@@ -433,8 +436,24 @@ impl WorkerPool {
         .await?;
 
         {
+            let active = active_tasks_final.lock().await;
+            let final_total = active
+                .get(&task_id_final)
+                .and_then(|at| at.chunk_handles.first())
+                .map(|h| h.total.load(Ordering::Relaxed) as i64)
+                .unwrap_or(task.total_bytes);
+            let final_dl = active
+                .get(&task_id_final)
+                .and_then(|at| at.chunk_handles.first())
+                .map(|h| h.downloaded.load(Ordering::Relaxed) as i64)
+                .unwrap_or(final_total);
+            drop(active);
+
             let conn = db.conn();
-            let _ = tasks::update_task_progress(&conn, &task.id, task.total_bytes);
+            if final_total > 0 {
+                let _ = tasks::update_task_total(&conn, &task.id, final_total);
+            }
+            let _ = tasks::update_task_progress(&conn, &task.id, std::cmp::max(final_dl, final_total));
         }
 
         Ok(())

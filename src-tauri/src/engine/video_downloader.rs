@@ -29,15 +29,21 @@ pub async fn run_video_download(
     cancel_token: CancellationToken,
     progress_callback: impl Fn(VideoProgress) + Send + 'static,
 ) -> Result<(), String> {
-    let output_template = output_dir
+    if !output_dir.exists() {
+        std::fs::create_dir_all(output_dir)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
+
+    let raw_path = output_dir
         .join(output_filename)
         .to_string_lossy()
         .to_string();
+    let output_template = raw_path.replace('%', "%%");
 
     let mut args: Vec<String> = vec![
         "--newline".to_string(),
         "--no-colors".to_string(),
-        "--no-warnings".to_string(),
+        "--no-playlist".to_string(),
         "--progress-template".to_string(),
         "download:PROGRESS %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.speed)s %(progress.eta)s".to_string(),
     ];
@@ -51,7 +57,13 @@ pub async fn run_video_download(
 
     if !config.format_id.is_empty() {
         args.push("-f".to_string());
-        args.push(config.format_id.clone());
+        let selector = &config.format_id;
+        let robust = if !selector.ends_with("/best") && !selector.contains("/best,") && selector != "best" {
+            format!("{}/best", selector)
+        } else {
+            selector.clone()
+        };
+        args.push(robust);
     }
 
     if !config.output_format.is_empty() {
@@ -80,6 +92,7 @@ pub async fn run_video_download(
 
     let mut cmd = tokio::process::Command::new(ytdlp_path);
     cmd.args(&args)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -105,13 +118,16 @@ pub async fn run_video_download(
     let stderr_handle = tokio::spawn(async move {
         let reader = tokio::io::BufReader::new(stderr);
         let mut lines = reader.lines();
+        let mut all_lines = Vec::new();
         let mut error_lines = Vec::new();
         while let Ok(Some(line)) = lines.next_line().await {
+            log::debug!("yt-dlp stderr: {}", line);
+            all_lines.push(line.clone());
             if line.contains("ERROR") {
                 error_lines.push(line);
             }
         }
-        error_lines
+        (error_lines, all_lines)
     });
 
     let cancel = cancel_token.clone();
@@ -131,6 +147,7 @@ pub async fn run_video_download(
         if cancel_token.is_cancelled() {
             break;
         }
+        log::debug!("yt-dlp stdout: {}", line);
         if let Some(progress) = parse_progress_line(&line) {
             progress_callback(progress);
         }
@@ -148,11 +165,15 @@ pub async fn run_video_download(
     }
 
     if !status.success() {
-        let error_lines = stderr_handle.await.unwrap_or_default();
-        let msg = if error_lines.is_empty() {
-            format!("yt-dlp exited with code {}", status.code().unwrap_or(-1))
-        } else {
+        let (error_lines, all_stderr) = stderr_handle.await.unwrap_or_default();
+        let msg = if !error_lines.is_empty() {
             error_lines.join("; ")
+        } else if !all_stderr.is_empty() {
+            log::error!("yt-dlp failed, stderr: {}", all_stderr.join("\n"));
+            let last_lines: Vec<&String> = all_stderr.iter().rev().take(3).collect();
+            format!("yt-dlp failed (code {}): {}", status.code().unwrap_or(-1), last_lines.into_iter().rev().map(|s| s.as_str()).collect::<Vec<_>>().join("; "))
+        } else {
+            format!("yt-dlp exited with code {}", status.code().unwrap_or(-1))
         };
         return Err(msg);
     }
@@ -264,7 +285,7 @@ fn parse_fallback_progress(line: &str) -> Option<VideoProgress> {
 
 fn parse_numeric(s: &str) -> u64 {
     let cleaned = s.trim().replace(',', "");
-    if cleaned == "NA" || cleaned == "N/A" || cleaned.is_empty() {
+    if cleaned == "NA" || cleaned == "N/A" || cleaned == "None" || cleaned == "none" || cleaned.is_empty() {
         return 0;
     }
     cleaned.parse::<f64>().unwrap_or(0.0) as u64
@@ -272,7 +293,7 @@ fn parse_numeric(s: &str) -> u64 {
 
 fn parse_float(s: &str) -> f64 {
     let cleaned = s.trim().replace(',', "");
-    if cleaned == "NA" || cleaned == "N/A" || cleaned.is_empty() {
+    if cleaned == "NA" || cleaned == "N/A" || cleaned == "None" || cleaned == "none" || cleaned.is_empty() {
         return 0.0;
     }
     cleaned.parse::<f64>().unwrap_or(0.0)

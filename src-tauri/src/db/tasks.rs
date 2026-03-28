@@ -121,6 +121,18 @@ pub fn update_task_progress(
     Ok(())
 }
 
+pub fn update_task_total(
+    conn: &Connection,
+    id: &str,
+    total_bytes: i64,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE tasks SET total_bytes = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![total_bytes, id],
+    )?;
+    Ok(())
+}
+
 pub fn delete_task(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM chunks WHERE task_id = ?1", params![id])?;
     conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
