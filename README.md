@@ -27,6 +27,14 @@ Download videos from **YouTube, Facebook, Instagram, TikTok, Twitter/X**, and **
 |---|---|
 | ![Main task list with status filters and bulk action bar](screenshots/queue-page.png) | ![Archive view with restore and delete options](screenshots/archive-items.png) |
 
+| YouTube Video Download | TikTok Video Download |
+|---|---|
+| ![YouTube video pre-flight modal with quality and format selection](screenshots/single-youtube-video.png) | ![TikTok video pre-flight modal](screenshots/single-tiktok-video.png) |
+
+| Playlist Download | Video Being Downloaded |
+|---|---|
+| ![Playlist extraction with per-video selection](screenshots/playlist-download.png) | ![Video download in progress with real-time progress](screenshots/video-being-downloaded.png) |
+
 | Settings — General & Downloads | Settings — Appearance & Shortcuts |
 |---|---|
 | ![Settings page showing save folder, clipboard, and download options](screenshots/settings.png) | ![Theme switcher, speed limiter, and keyboard shortcuts](screenshots/settings2.png) |
