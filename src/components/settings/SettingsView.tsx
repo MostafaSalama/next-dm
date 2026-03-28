@@ -313,12 +313,12 @@ export function SettingsView() {
         <section>
           <SectionHeader title="About" />
           <div
-            className="rounded-xl p-4 flex flex-col gap-2"
+            className="rounded-xl p-4 flex flex-col gap-3"
             style={{ backgroundColor: "var(--surface-container-low)" }}
           >
             <div className="flex items-center gap-2">
               <span
-                className="text-body-sm"
+                className="text-body-sm font-semibold"
                 style={{ color: "var(--on-surface)" }}
               >
                 Next DM
@@ -327,15 +327,37 @@ export function SettingsView() {
                 className="text-mono-sm"
                 style={{ color: "var(--on-surface-variant)", fontSize: "0.65rem" }}
               >
-                v0.1.0
+                v0.2.0
               </span>
             </div>
             <span
               className="text-body-sm"
-              style={{ color: "var(--on-surface-variant)" }}
+              style={{ color: "var(--on-surface-variant)", lineHeight: 1.5 }}
             >
-              A modern, multi-threaded download manager built with Tauri and React.
+              A modern, multi-threaded download manager with video platform support. Built with Tauri and React.
             </span>
+            <div
+              className="flex items-center gap-2 pt-1"
+              style={{ borderTop: "1px solid color-mix(in srgb, var(--outline) 10%, transparent)" }}
+            >
+              <span
+                className="text-body-sm"
+                style={{ color: "var(--on-surface-variant)", fontSize: "0.65rem" }}
+              >
+                Made by
+              </span>
+              <a
+                href="https://github.com/MostafaSalama/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-body-sm font-medium transition-colors duration-100"
+                style={{ color: "var(--primary-fixed-dim)", fontSize: "0.7rem" }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                Mostafa Tourad
+              </a>
+            </div>
           </div>
         </section>
       </div>

@@ -1,6 +1,6 @@
 [package]
 name = "next-dm"
-version = "0.1.0"
+version = "0.2.0"
 description = "Next DM — High-Performance Download Manager"
 authors = ["you"]
 license = ""
